@@ -2,7 +2,7 @@ from typing import Dict, Any
 import logging
 from app.services.session_manager import get_session, start_session, record_interaction
 from app.services.virtual_agent import detect_intent_and_level, _build_result
-from app.services.gpt_agent import generate_response_with_gpt
+from app.services.gpt_agent import generate_response_with_gpt, stream_gpt_response
 from app.api.counselor import process_alert
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,13 @@ def _scaled_boost(raw_confidence: float, base_multiplier: float, threshold: floa
     return min(0.98, raw_confidence * scaled_multiplier)
 
 
-def analyze_intent(user_message: str, session_id: str | None = None, user_id: str | None = None, vent_mode: bool = False) -> Dict[str, Any]:
+def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str | None = None, vent_mode: bool = False) -> Dict[str, Any]:
+    """Steps 1–6 of a chat turn: session handling, detection, confidence
+    running, severity mapping, acoustic fusion, counselor check.
 
+    Shared by the sync path (analyze_intent) and the streaming path
+    (stream_analyze_intent) so both behave identically.
+    """
     # --- Step 1: Ensure session exists ---
     if session_id and get_session(session_id):
         session = get_session(session_id)
@@ -72,82 +77,42 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
     raw_confidence = detection["confidence"]
     crisis_resources = detection["crisis_resources"]
 
-    # --- VENT MODE: silently track real analysis but respond with listening prompt ---
-    if vent_mode and detected_intent != "suicidal" and raw_confidence < 0.99:
+    if vent_mode and (detected_intent == "suicidal" or raw_confidence >= 0.99):
+        logger.warning("VENT MODE OVERRIDE: crisis detected in vent session %s", session_id)
+
+    is_venting = vent_mode and detected_intent != "suicidal" and raw_confidence < 0.99
+
+    if is_venting:
+        # VENT MODE: track analysis silently, respond with listening prompt only.
         intent = detected_intent
         running_confidence = raw_confidence
 
         final_detection = _build_result(detected_intent, raw_confidence)
         severity = final_detection["severity"]
-        anxiety_level = final_detection["anxiety_level"]
+        anxiety_level = "venting"
         anxiety_score = final_detection["anxiety_score"]
 
-        if "meta" not in session:
-            session["meta"] = {}
+        session.setdefault("meta", {})
         session["meta"]["running_confidence"] = running_confidence
         session["meta"]["running_intent"] = intent
 
-        gpt_result = generate_response_with_gpt(
-            user_message=user_message,
-            session_context=session,
-            anxiety_level="venting",
-            counselor_protocol=None,
-        )
-
-        if gpt_result.get("used") and gpt_result.get("response"):
-            response_text = gpt_result["response"]
-            method = "gpt"
-        else:
-            response_text = "I'm listening. Take your time — I'm right here."
-            method = "fallback"
-
-        try:
-            record_interaction(
-                session_id=session_id,
-                sender="user",
-                text=user_message,
-                analysis={
-                    "intent": intent,
-                    "confidence": running_confidence,
-                    "intensity": anxiety_score,
-                    "severity": severity,
-                    "escalate": False,
-                },
-                response=response_text,
-            )
-        except Exception as e:
-            logger.error(f"Failed to record vent interaction: {e}")
-
-        if response_text:
-            try:
-                record_interaction(
-                    session_id=session_id,
-                    sender="bot",
-                    text=response_text,
-                    analysis={},
-                    response=None,
-                )
-            except Exception as e:
-                logger.error(f"Failed to record vent bot interaction: {e}")
-
         return {
+            "session": session,
             "session_id": session_id,
             "intent": intent,
-            "confidence": running_confidence,
+            "running_confidence": running_confidence,
             "anxiety_level": anxiety_level,
             "severity": severity,
             "anxiety_score": anxiety_score,
-            "response": response_text,
-            "method": method,
+            "counselor_protocol": None,
+            "crisis_resources": crisis_resources,
+            "is_venting": is_venting,
+            "counselor_active": False,
         }
 
-    # --- VENT MODE CRISIS OVERRIDE: student said something crisis/suicidal ---
-    if vent_mode and (detected_intent == "suicidal" or raw_confidence >= 0.99):
-        logger.warning("VENT MODE OVERRIDE: crisis detected in vent session %s", session_id)
-
+    # --- Normal path: crisis bypass / running confidence / priority ---
     intent = detected_intent
 
-    # --- Step 3: Crisis bypass ---
     if intent == "suicidal" or raw_confidence >= 0.99:
         running_confidence = 0.99
         if "meta" not in session:
@@ -155,6 +120,7 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
         session["meta"]["running_confidence"] = running_confidence
         session["meta"]["running_intent"] = "suicidal"
         session["meta"]["post_crisis"] = True
+        post_crisis = True
     else:
         previous_confidence = session.get("meta", {}).get("running_confidence", 0.3)
         previous_intent = session.get("meta", {}).get("running_intent", "neutral")
@@ -257,10 +223,38 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
         except Exception as e:
             logger.error(f"Acoustic fusion error: {e}")
 
-    # --- Step 6: If counselor is active — skip GPT, still return full analysis ---
-    if session.get("meta", {}).get("counselor_active"):
-        try:
-            record_interaction(
+    # --- Step 6: Is a human counselor active? ---
+    counselor_active = bool(session.get("meta", {}).get("counselor_active"))
+
+    return {
+        "session": session,
+        "session_id": session_id,
+        "intent": intent,
+        "running_confidence": running_confidence,
+        "anxiety_level": anxiety_level,
+        "severity": severity,
+        "anxiety_score": anxiety_score,
+        "counselor_protocol": counselor_protocol,
+        "crisis_resources": crisis_resources,
+        "is_venting": is_venting,
+        "counselor_active": counselor_active,
+    }
+
+
+def _finalize_turn(turn: Dict[str, Any], user_message: str, response_text: str, method: str, escalate: bool, fire_alert: bool = True) -> Dict[str, Any]:
+    """Steps 8–9 shared by both paths: record interactions, fire alerts,
+    track covered themes, and return the canonical result dict."""
+    session = turn["session"]
+    session_id = turn["session_id"]
+    intent = turn["intent"]
+    running_confidence = turn["running_confidence"]
+    anxiety_level = turn["anxiety_level"]
+    severity = turn["severity"]
+    anxiety_score = turn["anxiety_score"]
+
+    # --- Step 9: Record interaction (user) ---
+    try:
+        record_interaction(
             session_id=session_id,
             sender="user",
             text=user_message,
@@ -269,77 +263,14 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
                 "confidence": running_confidence,
                 "intensity": anxiety_score,
                 "severity": severity,
-                "escalate": anxiety_level in ("high", "crisis") or running_confidence >= 0.99,
+                "escalate": escalate,
             },
-            response=None,
+            response=response_text if method != "counselor" else None,
         )
-        except Exception as e:
-            logger.error(f"Failed to record interaction: {e}")
-
-        return {
-            "session_id": session_id,
-            "intent": intent,
-            "confidence": running_confidence,
-            "anxiety_level": anxiety_level,
-            "severity": severity,
-            "anxiety_score": anxiety_score,
-            "response": None,
-            "counselor_active": True,
-            "method": "counselor",
-        }
-
-    # --- Step 7: GPT response (only when counselor is NOT active) ---
-    gpt_protocol = counselor_protocol
-    if crisis_resources:
-        gpt_protocol = f"{crisis_resources}\n\n{counselor_protocol or ''}"
-
-    gpt_result = generate_response_with_gpt(
-        user_message=user_message,
-        session_context=session,
-        anxiety_level=anxiety_level,
-        counselor_protocol=gpt_protocol,
-    )
-
-    if gpt_result.get("used") and gpt_result.get("response"):
-        response_text = gpt_result["response"]
-        method = "gpt"
-    else:
-        logger.warning("GPT unavailable, using safe fallback response")
-        response_text = "I'm here with you. Can you tell me more about how you're feeling?"
-        method = "fallback"
-
-    # --- Step 8: Fire counselor alert for HIGH and CRISIS ---
-    if anxiety_level in ("high", "crisis"):
-        try:
-            process_alert(
-                session_id=session_id,
-                user_id=session.get("user_id") if session else None,
-                intent=intent,
-                anxiety_score=anxiety_score,
-                message=user_message,
-            )
-        except Exception as e:
-            logger.error(f"Failed to fire counselor alert: {e}")
-
-    # --- Step 9: Record interaction ---
-    try:
-        record_interaction(
-        session_id=session_id,
-        sender="user",
-        text=user_message,
-        analysis={
-            "intent": intent,
-            "confidence": running_confidence,
-            "intensity": anxiety_score,
-            "severity": severity,
-            "escalate": anxiety_level in ("high", "crisis") or running_confidence >= 0.99,
-        },
-        response=response_text,
-    )
     except Exception as e:
         logger.error(f"Failed to record interaction: {e}")
 
-    # --- Step 9a: Also log GAIDA's bot reply as its own visible message ---
+    # --- Step 9a: Record GAIDA's bot reply as its own visible message ---
     if response_text:
         try:
             record_interaction(
@@ -352,8 +283,9 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
         except Exception as e:
             logger.error(f"Failed to record bot interaction: {e}")
 
-    # --- Step 9b: Track question themes to prevent repetition ---
-    if response_text and "meta" in session:
+        # --- Step 9b: Track question themes to prevent repetition ---
+        if "meta" not in session:
+            session["meta"] = {}
         if "covered_themes" not in session["meta"]:
             session["meta"]["covered_themes"] = []
 
@@ -363,6 +295,19 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
             session["meta"]["covered_themes"].append(closing_line)
             session["meta"]["covered_themes"] = session["meta"]["covered_themes"][-5:]
 
+    # --- Step 8: Fire counselor alert for HIGH and CRISIS ---
+    if escalate and fire_alert:
+        try:
+            process_alert(
+                session_id=session_id,
+                user_id=session.get("user_id") if session else None,
+                intent=intent,
+                anxiety_score=anxiety_score,
+                message=user_message,
+            )
+        except Exception as e:
+            logger.error(f"Failed to fire counselor alert: {e}")
+
     return {
         "session_id": session_id,
         "intent": intent,
@@ -370,6 +315,85 @@ def analyze_intent(user_message: str, session_id: str | None = None, user_id: st
         "anxiety_level": anxiety_level,
         "severity": severity,
         "anxiety_score": anxiety_score,
-        "response": response_text,
+        "response": response_text if method != "counselor" else None,
+        "counselor_active": method == "counselor",
         "method": method,
     }
+
+
+def analyze_intent(user_message: str, session_id: str | None = None, user_id: str | None = None, vent_mode: bool = False) -> Dict[str, Any]:
+    turn = _prepare_turn(user_message, session_id, user_id, vent_mode)
+
+    # --- Step 6: If counselor is active — skip GPT, still return full analysis ---
+    if turn["counselor_active"]:
+        escalate = turn["anxiety_level"] in ("high", "crisis") or turn["running_confidence"] >= 0.99
+        return _finalize_turn(turn, user_message, "", "counselor", escalate, fire_alert=False)
+
+    # --- Step 7: GPT response (only when counselor is NOT active) ---
+    gpt_protocol = turn["counselor_protocol"]
+    if turn["crisis_resources"]:
+        gpt_protocol = f"{turn['crisis_resources']}\n\n{turn['counselor_protocol'] or ''}"
+
+    gpt_result = generate_response_with_gpt(
+        user_message=user_message,
+        session_context=turn["session"],
+        anxiety_level=turn["anxiety_level"],
+        counselor_protocol=gpt_protocol,
+    )
+
+    if gpt_result.get("used") and gpt_result.get("response"):
+        response_text = gpt_result["response"]
+        method = "gpt"
+    else:
+        logger.warning("GPT unavailable, using safe fallback response")
+        response_text = "I'm here with you. Can you tell me more about how you're feeling?"
+        method = "fallback"
+
+    escalate = turn["anxiety_level"] in ("high", "crisis") or turn["running_confidence"] >= 0.99
+
+    return _finalize_turn(turn, user_message, response_text, method, escalate)
+
+
+def stream_analyze_intent(user_message: str, session_id: str | None = None, user_id: str | None = None, vent_mode: bool = False):
+    """Streaming variant of analyze_intent.
+
+    Yields event dicts:
+      {"type": "delta", "text": str}   — each GPT token chunk
+      {"type": "done",  "result": {...}} — final result dict (the same shape
+                                            analyze_intent returns)
+    """
+    turn = _prepare_turn(user_message, session_id, user_id, vent_mode)
+
+    # --- Step 6: Counselor active — no GPT, immediately done ---
+    if turn["counselor_active"]:
+        escalate = turn["anxiety_level"] in ("high", "crisis") or turn["running_confidence"] >= 0.99
+        yield {"type": "done", "result": _finalize_turn(turn, user_message, "", "counselor", escalate, fire_alert=False)}
+        return
+
+    # --- Step 7: Stream GPT response ---
+    gpt_protocol = turn["counselor_protocol"]
+    if turn["crisis_resources"]:
+        gpt_protocol = f"{turn['crisis_resources']}\n\n{turn['counselor_protocol'] or ''}"
+
+    response_text = ""
+    got_tokens = False
+    for delta, full in stream_gpt_response(
+        user_message=user_message,
+        session_context=turn["session"],
+        anxiety_level=turn["anxiety_level"],
+        counselor_protocol=gpt_protocol,
+    ):
+        got_tokens = True
+        response_text = full
+        yield {"type": "delta", "text": delta}
+
+    if not got_tokens:
+        logger.warning("GPT stream unavailable, using safe fallback response")
+        response_text = "I'm here with you. Can you tell me more about how you're feeling?"
+        yield {"type": "delta", "text": response_text}
+
+    method = "gpt" if got_tokens else "fallback"
+    escalate = turn["anxiety_level"] in ("high", "crisis") or turn["running_confidence"] >= 0.99
+
+    result = _finalize_turn(turn, user_message, response_text, method, escalate)
+    yield {"type": "done", "result": result}

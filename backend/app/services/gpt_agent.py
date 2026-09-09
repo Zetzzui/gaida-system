@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_BASE = "ft:gpt-3.5-turbo-0125:personal::DqH2I32e"
-MAX_HISTORY_MESSAGES = 6
+MAX_HISTORY_MESSAGES = 4
 TOKEN_LIMITS = {
-    "none":     100,
-    "low":      130,
-    "moderate": 150,
-    "high":     110,
-    "crisis":   100,
-    "venting":  120,
+    "none":     80,
+    "low":      110,
+    "moderate": 130,
+    "high":     100,
+    "crisis":   90,
+    "venting":  100,
 }
 
 client = None
@@ -435,16 +435,16 @@ def _build_progression_rule(session_context: Dict[str, Any] | None) -> str | Non
 # MAIN FUNCTION
 # ─────────────────────────────────────────────────────────────────
 
-def generate_response_with_gpt(
+def _build_gpt_messages(
     user_message: str,
     session_context: Dict[str, Any] | None = None,
     anxiety_level: str | None = None,
     counselor_protocol: str | None = None,
-) -> Dict[str, Any]:
-
+) -> list[Dict[str, str]] | None:
+    """Shared message-builder for the sync and streaming GPT calls.
+    Returns None if the OpenAI client is unavailable."""
     if not client:
-        logger.error("OpenAI client is not initialized")
-        return {"response": None, "used": False}
+        return None
 
     # ── Step 1: Base system prompt ────────────────────────────────
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -523,13 +523,40 @@ def generate_response_with_gpt(
     # ── Step 6: Add current user message ─────────────────────────
     messages.append({"role": "user", "content": user_message})
 
+    return messages
+
+
+def _max_tokens_for(anxiety_level: str | None) -> int:
+    return TOKEN_LIMITS.get(anxiety_level.lower() if anxiety_level else "none", 130)
+
+
+def generate_response_with_gpt(
+    user_message: str,
+    session_context: Dict[str, Any] | None = None,
+    anxiety_level: str | None = None,
+    counselor_protocol: str | None = None,
+) -> Dict[str, Any]:
+
+    if not client:
+        logger.error("OpenAI client is not initialized")
+        return {"response": None, "used": False}
+
+    messages = _build_gpt_messages(
+        user_message=user_message,
+        session_context=session_context,
+        anxiety_level=anxiety_level,
+        counselor_protocol=counselor_protocol,
+    )
+    if messages is None:
+        return {"response": None, "used": False}
+
     # ── Step 7: Call OpenAI ───────────────────────────────────────
     try:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL_BASE,
             messages=messages,
             temperature=0.75,
-            max_tokens=TOKEN_LIMITS.get(anxiety_level.lower() if anxiety_level else "none", 130),
+            max_tokens=_max_tokens_for(anxiety_level),
         )
 
         content = None
@@ -554,3 +581,59 @@ def generate_response_with_gpt(
     except Exception as e:
         logger.error("GPT call failed: %s", e)
         return {"response": None, "used": False}
+
+
+def stream_gpt_response(
+    user_message: str,
+    session_context: Dict[str, Any] | None = None,
+    anxiety_level: str | None = None,
+    counselor_protocol: str | None = None,
+):
+    """Generator streaming a GPT response token-by-token.
+
+    Yields (delta, full_text_so_far) tuples. Yields nothing if the client is
+    unavailable or the call fails — the caller must supply a fallback.
+    """
+    if not client:
+        return
+
+    messages = _build_gpt_messages(
+        user_message=user_message,
+        session_context=session_context,
+        anxiety_level=anxiety_level,
+        counselor_protocol=counselor_protocol,
+    )
+    if messages is None:
+        return
+
+    try:
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL_BASE,
+            messages=messages,
+            temperature=0.75,
+            max_tokens=_max_tokens_for(anxiety_level),
+            stream=True,
+        )
+
+        full_text: list[str] = []
+        for chunk in resp:
+            delta = None
+            if chunk and chunk.choices and len(chunk.choices) > 0:
+                piece = chunk.choices[0].delta
+                delta = piece.content if piece and piece.content else None
+
+            if delta:
+                full_text.append(delta)
+                yield (delta, "".join(full_text))
+
+        if not full_text:
+            logger.warning("GPT stream returned empty response")
+
+    except RateLimitError:
+        logger.error("OpenAI rate limit reached (stream)")
+    except APIConnectionError:
+        logger.error("OpenAI connection error (stream)")
+    except APITimeoutError:
+        logger.error("OpenAI request timed out (stream)")
+    except Exception as e:
+        logger.error("GPT stream failed: %s", e)

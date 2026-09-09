@@ -193,17 +193,19 @@ async function handleQueueablePost(request) {
         client.postMessage({ type: "MESSAGE_QUEUED", payload: body })
       );
 
-      // Return optimistic offline response
+      // Return optimistic offline response as NDJSON — matches the
+      // /virtual-agent/stream format the chat frontend consumes.
       return new Response(
         JSON.stringify({
-          queued: true,
-          offline: true,
-          message: "You're offline. Your message has been saved and will be sent when you reconnect.",
-          response: "It looks like you're offline right now. I've saved your message and will respond as soon as you're back online. 💙",
-        }),
+          type: "done",
+          result: {
+            session_id: null,
+            response: "It looks like you're offline right now. I've saved your message and will respond as soon as you're back online. 💙",
+          },
+        }) + "\n",
         {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/x-ndjson" },
         }
       );
     } catch (queueError) {
@@ -242,14 +244,18 @@ async function flushMessageQueue() {
 
       if (response.ok) {
         await removeFromQueue(item.id);
-        const data = await response.json();
+        // The stream endpoint replies with NDJSON — grab the final done.result.
+        const result = await readStreamDone(response);
 
         // Notify tabs that the queued message was sent and got a response
         const clients = await self.clients.matchAll({ type: "window" });
         clients.forEach((client) =>
           client.postMessage({
             type: "QUEUED_MESSAGE_SENT",
-            payload: { original: item.body, response: data },
+            payload: {
+              original: item.body,
+              response: { response: result?.response || item.body?.message },
+            },
           })
         );
         console.log("[GAIDA SW] Queued message sent:", item.id);
@@ -257,6 +263,39 @@ async function flushMessageQueue() {
     } catch (err) {
       console.error("[GAIDA SW] Failed to flush message:", item.id, err);
     }
+  }
+}
+
+
+// Reads an NDJSON stream and returns the final "done" event's result (or null).
+async function readStreamDone(response) {
+  try {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // keep incomplete line for the next chunk
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const event = JSON.parse(trimmed);
+          if (event.type === "done") result = event.result || null;
+        } catch { /* skip malformed line */ }
+      }
+    }
+    return result;
+  } catch (err) {
+    console.error("[GAIDA SW] Failed to read stream:", err);
+    return null;
   }
 }
 

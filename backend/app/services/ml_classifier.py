@@ -170,8 +170,8 @@ def _load_all_models():
             print(f"Missing models: {missing}. Training now...")
             train_and_compare()
 
-        # Load only LR and RF at startup — NN loads on first use
-        for name in ["Logistic Regression", "Random Forest"]:
+        # Load all 3 models — NN included so the first reply doesn't pay a loading penalty
+        for name in ["Logistic Regression", "Random Forest", "Neural Network"]:
             path = model_paths[name]
             if path.exists():
                 with open(path, "rb") as f:

@@ -3,6 +3,7 @@ from datetime import datetime
 import uuid
 from app.database.database import supabase
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from app.utils.consent_checker import has_consent
 
@@ -10,12 +11,110 @@ SESSIONS: Dict[str, Dict[str, Any]] = {}
 SESSION_STALE_MINUTES = 30  # sessions with no activity in this window are excluded from "active"
 _SUBSCRIBERS: List[Callable] = []
 
+# Single worker so DB/file writes never block the chat response AND are
+# serialized (avoids swallowing writes from concurrent messages).
+_PERSIST_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gaida-persist")
+
+
+
+def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
+    """Rehydrate a session (messages + meta) from Supabase so returning
+    students resume the exact conversation they had before.
+
+    Returns None if no interactions exist for this session.
+    """
+    try:
+        rows = (
+            supabase.table("interactions")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("timestamp")
+            .execute()
+        )
+    except Exception as e:
+        print(f"Session load error: {e}")
+        return None
+
+    data = rows.data
+    if not data:
+        return None
+
+    # Each row is one user turn + GAIDA's reply (stored in `response`).
+    messages = []
+    for row in data:
+        ts = row.get("timestamp")
+        messages.append({"sender": "user", "text": row.get("message", ""), "timestamp": ts})
+        if row.get("response"):
+            messages.append({"sender": "bot", "text": row["response"], "timestamp": ts})
+
+    last = data[-1]
+
+    # Recompute peak severity from the full history (sessions table is stale mid-session).
+    SEVERITY_RANK = {"Normal": 0, "Low": 1, "Moderate": 2, "High": 3, "Crisis": 4}
+    peak_severity = "Normal"
+    peak_confidence = 0.3
+    for row in data:
+        sev = row.get("severity") or "Normal"
+        try:
+            conf = float(row["confidence"]) if row.get("confidence") is not None else 0.0
+        except (TypeError, ValueError):
+            conf = 0.0
+        if SEVERITY_RANK.get(sev, 0) > SEVERITY_RANK.get(peak_severity, 0):
+            peak_severity = sev
+            peak_confidence = conf
+
+    # Rebuild the anti-repetition theme list (same rule as intent_router Step 9b).
+    covered_themes = []
+    for row in data:
+        resp = row.get("response")
+        if not resp:
+            continue
+        sentences = [s.strip() for s in resp.split('.') if s.strip()]
+        if sentences:
+            covered_themes.append(sentences[-1])
+    covered_themes = covered_themes[-5:]
+
+    try:
+        last_confidence = float(last["confidence"]) if last.get("confidence") is not None else 0.3
+    except (TypeError, ValueError):
+        last_confidence = 0.3
+
+    meta = {
+        "running_intent": last.get("intent") or "neutral",
+        "running_confidence": last_confidence,
+        "intensity": last.get("anxiety_score"),
+        "peak_severity": peak_severity,
+        "peak_confidence": peak_confidence,
+        "post_crisis": last.get("intent") == "suicidal" or last.get("severity") in ("High", "Crisis"),
+        "pending_acoustic": None,
+        "covered_themes": covered_themes,
+    }
+
+    return {
+        "session_id": session_id,
+        "user_id": last.get("student_id") or None,
+        "messages": messages,
+        "active": True,
+        "meta": meta,
+        "started_at": messages[0]["timestamp"] if messages else None,
+    }
 
 
 def start_session(user_id: str | None = None, session_id: str | None = None) -> str:
     sid = session_id or str(uuid.uuid4())
     if sid in SESSIONS:
         return sid
+
+    # Returning student — rehydrate their previous conversation before
+    # creating a blank session (only when a session_id was supplied).
+    if session_id:
+        restored = load_session_from_db(sid)
+        if restored:
+            if user_id:
+                restored["user_id"] = user_id
+            SESSIONS[sid] = restored
+            return sid
+
     SESSIONS[sid] = {
         "session_id": sid,
         "user_id": user_id,
@@ -89,6 +188,41 @@ def _persist_entry(entry: Dict[str, Any]):
         print(f"Supabase insert error: {e}")
 
 
+def _persist_session_data(session_id: str, entry: Dict[str, Any]):
+    """Runs in the background executor — consent check, Supabase insert,
+    and log file write must never block the chat response."""
+    try:
+        if not has_consent(session_id):
+            return
+
+        _persist_entry(entry)
+
+        from app.utils.logger import log_interaction
+
+        if entry.get("sender") == "user":
+            log_interaction(
+                session_id=session_id,
+                user_message=entry.get("text", ""),
+                intent=entry.get("analysis", {}).get("intent", "unknown"),
+                confidence=entry.get("analysis", {}).get("confidence", 0.0),
+                anxiety_score=entry.get("analysis", {}).get("intensity", 0),
+                response=entry.get("response") or "",
+                method="session-manager",
+            )
+        else:
+            log_interaction(
+                session_id=session_id,
+                user_message=entry.get("text", ""),
+                intent=entry.get("analysis", {}).get("intent", ""),
+                confidence=entry.get("analysis", {}).get("confidence", 0.0),
+                anxiety_score=entry.get("analysis", {}).get("anxiety_score", 0),
+                response=entry.get("response") or "",
+                method="session-manager",
+            )
+    except Exception:
+        pass
+
+
 def record_interaction(session_id: str, sender: str, text: str, analysis: Dict | None = None, response: str | None = None):
     session = SESSIONS.get(session_id)
     if session is None:
@@ -123,36 +257,10 @@ def record_interaction(session_id: str, sender: str, text: str, analysis: Dict |
             session["meta"]["peak_severity"] = new_severity
             session["meta"]["peak_confidence"] = new_confidence
 
-    # Persist only if consent exists for this session
+    # Persist only if consent exists — offloaded to a background thread so
+    # Supabase/file writes never block the chat response.
     try:
-        if has_consent(session_id):
-            _persist_entry(entry)
-
-            from app.utils.logger import log_interaction
-
-            if sender == "user":
-                intent = entry.get("analysis", {}).get("intent", "unknown")
-                confidence = entry.get("analysis", {}).get("confidence", 0.0)
-                anxiety_score = entry.get("analysis", {}).get("intensity", 0)
-                log_interaction(
-                    session_id=session_id,
-                    user_message=text,
-                    intent=intent,
-                    confidence=confidence,
-                    anxiety_score=anxiety_score,
-                    response=response or "",
-                    method="session-manager",
-                )
-            else:
-                log_interaction(
-                    session_id=session_id,
-                    user_message=text,
-                    intent=entry.get("analysis", {}).get("intent", ""),
-                    confidence=entry.get("analysis", {}).get("confidence", 0.0),
-                    anxiety_score=entry.get("analysis", {}).get("anxiety_score", 0),
-                    response=response or "",
-                    method="session-manager",
-                )
+        _PERSIST_EXECUTOR.submit(_persist_session_data, session_id, entry)
     except Exception:
         pass
 
@@ -160,7 +268,13 @@ def record_interaction(session_id: str, sender: str, text: str, analysis: Dict |
 
 
 def get_session(session_id: str):
-    return SESSIONS.get(session_id)
+    s = SESSIONS.get(session_id)
+    if s is None:
+        # Safety net: fall back to Supabase so counselors/guards see history too.
+        s = load_session_from_db(session_id)
+        if s:
+            SESSIONS[session_id] = s
+    return s
 
 
 def list_active_sessions():

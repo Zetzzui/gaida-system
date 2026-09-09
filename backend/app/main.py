@@ -17,11 +17,11 @@ if project_root not in sys.path:
 # ----------------------------
 from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
+import json
 
-
-from app.services.intent_router import analyze_intent
+from app.services.intent_router import analyze_intent, stream_analyze_intent
 from app.services.rate_limiter import check_rate_limit
 from app.services.session_manager import get_session
 from app.utils.auth import get_current_user
@@ -148,3 +148,37 @@ def virtual_agent(input: UserInput, user: dict = Depends(get_current_user)):
         "response": result.get("response"),
         "method": result.get("method"),
     }
+
+
+def _auth_guard(input: UserInput, user: dict):
+    """Shared auth + session-ownership checks for the chat endpoints."""
+    check_rate_limit(user["user_id"])
+
+    if input.session_id:
+        session = get_session(input.session_id)
+        if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+            raise HTTPException(status_code=403, detail="Session does not belong to this user")
+
+
+def _stream_agent_events(message: str, session_id: str | None, user_id: str, vent_mode: bool):
+    """Converts stream_analyze_intent event dicts into NDJSON lines."""
+    for event in stream_analyze_intent(
+        user_message=message,
+        session_id=session_id,
+        user_id=user_id,
+        vent_mode=vent_mode,
+    ):
+        yield json.dumps(event, ensure_ascii=False) + "\n"
+
+
+@app.post("/virtual-agent/stream")
+def virtual_agent_stream(input: UserInput, user: dict = Depends(get_current_user)):
+    """Streaming chat endpoint. Emits NDJSON dicts, one per line:
+      {"type": "delta", "text": "<token chunk>"}
+      {"type": "done",  "result": {...}}
+    """
+    _auth_guard(input, user)
+    return StreamingResponse(
+        _stream_agent_events(input.message, input.session_id, user["user_id"], input.vent_mode),
+        media_type="application/x-ndjson",
+    )

@@ -419,9 +419,8 @@ export default function StudentDashboard() {
     const sessionId = localStorage.getItem('session_id');
     const token     = localStorage.getItem('session_token');
 
-
     try {
-      const res = await fetch(`${BACKEND}/virtual-agent`, {
+      const res = await fetch(`${BACKEND}/virtual-agent/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -436,24 +435,56 @@ export default function StudentDashboard() {
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.text();
+      if (!res.ok || !res.body) {
+        const err = await res.text().catch(() => String(res.status));
         setMessages(prev => [...prev, { role: 'bot', text: `Error: ${err || res.status}`, timestamp: new Date() }]);
         return;
       }
 
-      const data = await res.json();
-      if (data.session_id)       localStorage.setItem('session_id', data.session_id);
-      if (data.severity)         setSeverity(data.severity);
-      if (data.counselor_active) setCounselorActive(true);
+      // Reserve a live bot bubble — text grows as tokens stream in.
+      let botMsg = { role: 'bot', text: '', timestamp: new Date() };
+      setMessages(prev => [...prev, botMsg]);
 
-      if (!data.counselor_active) {
-        setMessages(prev => [...prev, {
-          role: 'bot',
-          text: data.response || 'No response from backend',
-          timestamp: new Date(),
-        }]);
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processLine = (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        let event;
+        try { event = JSON.parse(trimmed); } catch { return; }
+
+        if (event.type === 'delta') {
+          botMsg = { ...botMsg, text: botMsg.text + event.text };
+          setMessages(prev => [...prev.slice(0, -1), botMsg]);
+        } else if (event.type === 'done') {
+          const result = event.result || {};
+          if (result.session_id)       localStorage.setItem('session_id', result.session_id);
+          if (result.severity)         setSeverity(result.severity);
+          if (result.counselor_active) setCounselorActive(true);
+
+          // Safety net: if no token ever arrived, show the final reply.
+          if (!result.counselor_active && !botMsg.text && result.response) {
+            botMsg = { ...botMsg, text: result.response };
+            setMessages(prev => [...prev.slice(0, -1), botMsg]);
+          }
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep the incomplete last line for the next chunk
+        lines.forEach(processLine);
       }
+
+      // Body may end without a trailing newline (e.g. SW offline reply) — parse the tail.
+      if (buffer.trim()) processLine(buffer);
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'bot', text: `Connection error: ${err.message}`, timestamp: new Date(),
