@@ -1,13 +1,56 @@
-# NOTE: auth middleware placeholder — not currently applied to any route.
-# To use, add `dependencies=[Depends(get_api_key)]` to a router or endpoint.
-# See app.api.auth for the actual login/consent endpoints.
+from secrets import token_urlsafe
+from time import time
 
-from fastapi import Security, HTTPException
-from fastapi.security import APIKeyHeader
+from fastapi import Header, HTTPException
 
-api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
+# In-memory token store: token -> { user_id, role, expires_at }
+# NOTE: same lifetime as the rest of the in-memory session state — tokens are
+# lost on server restart. Acceptable for the current single-instance deploy.
+ACTIVE_TOKENS = {}
 
-def get_api_key(api_key: str = Security(api_key_header)):
-    if api_key != "dev-key":
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    return api_key
+TOKEN_TTL_HOURS = 12
+
+
+def create_session_token(user_id: str, role: str = "student") -> str:
+    """Issue a bearer token for the given user and store it in ACTIVE_TOKENS."""
+    token = f"token_{role}_{token_urlsafe(16)}"
+    ACTIVE_TOKENS[token] = {
+        "user_id": user_id,
+        "role": role,
+        "expires_at": time() + TOKEN_TTL_HOURS * 3600,
+    }
+    return token
+
+
+def revoke_session_token(token: str):
+    """Invalidate a token immediately (e.g. logout)."""
+    ACTIVE_TOKENS.pop(token, None)
+
+
+def _purge_expired():
+    now = time()
+    for token in list(ACTIVE_TOKENS):
+        if ACTIVE_TOKENS[token].get("expires_at", 0) < now:
+            del ACTIVE_TOKENS[token]
+
+
+def get_current_user(authorization: str = Header(None)) -> dict:
+    """FastAPI dependency — validates `Authorization: Bearer <token>`.
+
+    Returns the authenticated user dict {user_id, role, expires_at}
+    or raises 401.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    _purge_expired()
+
+    user = ACTIVE_TOKENS.get(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    return user

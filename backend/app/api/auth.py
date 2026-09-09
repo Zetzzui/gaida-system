@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
-from secrets import token_urlsafe
 from app.database.database import supabase
 from app.constants import TEST_CREDENTIALS
 from app.services.rate_limiter import check_rate_limit
+from app.utils.auth import create_session_token
+
 
 ALLOWED_DOMAIN = "@ue.edu.ph"
 
@@ -60,7 +61,7 @@ def login(payload: LoginRequest):
     if not credentials or payload.access_code != credentials.get("access_code"):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    session_token = f"token_{student_number}_{token_urlsafe(16)}"
+    session_token = create_session_token(student_number, role="student")
 
     return LoginResponse(
         success=True,

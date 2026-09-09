@@ -15,7 +15,7 @@ if project_root not in sys.path:
 # ----------------------------
 # Imports
 # ----------------------------
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -23,6 +23,8 @@ from pydantic import BaseModel
 
 from app.services.intent_router import analyze_intent
 from app.services.rate_limiter import check_rate_limit
+from app.services.session_manager import get_session
+from app.utils.auth import get_current_user
 from app.api import auth
 from app.api.voice import router as audio_router
 from app.api.counselor import router as counselor_router
@@ -114,13 +116,18 @@ def root():
 
 
 @app.post("/virtual-agent")
-def virtual_agent(input: UserInput):
-    check_rate_limit(input.session_id or "anonymous")
+def virtual_agent(input: UserInput, user: dict = Depends(get_current_user)):
+    check_rate_limit(user["user_id"])
+
+    if input.session_id:
+        session = get_session(input.session_id)
+        if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+            raise HTTPException(status_code=403, detail="Session does not belong to this user")
 
     result = analyze_intent(
         user_message=input.message,
         session_id=input.session_id,
-        user_id=input.user_id,
+        user_id=user["user_id"],
         vent_mode=input.vent_mode,
     )
 
