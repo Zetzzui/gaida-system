@@ -11,5 +11,7 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: WHISPER_MODEL
         value: medium
