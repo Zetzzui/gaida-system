@@ -1,0 +1,13 @@
+venv/
+.env
+**/__pycache__/
+*.pyc
+.pytest_cache/
+logs/
+tests/
+tools/
+test_gpt.py
+test_login.py
+.venv/
+*.log
+*.md
