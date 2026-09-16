@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>GAIDA — Expert Validation of Training Data</title>
+<title>GAIDA - Expert Validation of Training Data</title>
 <style>
   body { font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; margin: 20px 28px; }
   h1 { font-size: 20px; margin: 0 0 2px; }
@@ -15,7 +15,7 @@
   tr { page-break-inside: avoid; }
   .num { width: 30px; text-align: center; }
   .msg { width: 42%; }
-  .label-col { width: 8%; text-align: center; }
+  .label-col { width: 14.3%; text-align: center; }
   .sig { margin-top: 28px; font-size: 12px; }
   .sig td { border: none; padding: 10px 0; }
   @media print {
@@ -30,20 +30,19 @@
 <p class="muted">AI-based Anxiety Detection System &middot; College Guidance &middot; University of the East</p>
 
 <p><b>Purpose.</b> GAIDA detects anxiety in student text messages using a model trained on labeled
-student-like phrases. The GAD-7 is a screening tool rather than a diagnostic test, so we ask a licensed
-mental health professional to independently re-label this sample to confirm our dataset is clinically
-sound and to measure inter-expert agreement.</p>
+student-like phrases. We ask a licensed mental health professional to independently label this sample
+to confirm our dataset is clinically sound and to measure inter-expert agreement.</p>
 
-<p><b>Time required:</b> approximately 15&ndash;20 minutes. <b>How to answer:</b> read each message and put a
+<p><b>Time required:</b> approximately 10&ndash;15 minutes. <b>How to answer:</b> read each message and put a
 check (&radic;) in the box of the ONE label you judge as the closest match.</p>
 
 <h2>Label Definitions (with examples)</h2>
 <ul>
-  <li><b>anxiety</b> &mdash; nervousness, worry, tension, dread, panic-like feelings, overthinking. <i>e.g. "I feel a constant sense of dread", "sobrang kaba ko"</i></li>
-  <li><b>sadness</b> &mdash; low mood, grief, loneliness, emptiness, crying, feeling abandoned. <i>e.g. "Sobrang lungkot ko ngayon", "I feel abandoned by everyone"</i></li>
-  <li><b>neutral</b> &mdash; casual or everyday statements with no significant distress. <i>e.g. "I passed my exam", "chill lang"</i></li>
-  <li><b>suicidal</b> &mdash; death wishes, wanting to end one&rsquo;s life, self-harm &mdash; even when phrased indirectly. <i>e.g. "Gusto ko na mamatay", "I want to die"</i></li>
-  <li><b>anger</b> &mdash; irritation, frustration, being fed up, hostility. <i>e.g. "galit na galit ako", "I cant control my anger"</i></li>
+  <li><b>anxiety</b> &mdash; nervousness, worry, tension, dread, panic-like feelings, overthinking. <i>e.g. "my heart is racing and I can't calm down"</i></li>
+  <li><b>sadness</b> &mdash; low mood, grief, loneliness, emptiness, crying. <i>e.g. "I've been crying all day and I can't stop"</i></li>
+  <li><b>neutral</b> &mdash; casual or everyday statements with no significant distress. <i>e.g. "I passed my math exam"</i></li>
+  <li><b>suicidal</b> &mdash; death wishes, wanting to end one&rsquo;s life, self-harm &mdash; even when phrased indirectly. <i>e.g. "I want to kill myself"</i></li>
+  <li><b>anger</b> &mdash; irritation, frustration, hostility. <i>e.g. "I'm so angry my blood is boiling"</i></li>
 </ul>
 
 <h2>Rating Sheet</h2>
@@ -51,135 +50,11 @@ check (&radic;) in the box of the ONE label you judge as the closest match.</p>
   <thead>
     <tr>
       <th class="num">#</th>
-      <th class="msg">Student Message</th>
-      <th class="label-col">anxiety</th>
-      <th class="label-col">sadness</th>
-      <th class="label-col">neutral</th>
-      <th class="label-col">suicidal</th>
-      <th class="label-col">anger</th>
+      <th class="msg">Student Message</th>      <th class="label-col">anxiety</th>      <th class="label-col">sadness</th>      <th class="label-col">neutral</th>      <th class="label-col">suicidal</th>      <th class="label-col">anger</th>
     </tr>
   </thead>
   <tbody>
-    <tr><td class="num">1</td><td>tired of school</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">2</td><td>Mas tahimik siguro kung wala ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">3</td><td>nailed my presentation today</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">4</td><td>Normal day lang</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">5</td><td>lagi nilang dinadisrespeto ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">6</td><td>I used to feel anxious but im better now</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">7</td><td>ang sama ng loob ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">8</td><td>It just started yesterday When I was doing my traces permitis work</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">9</td><td>yamot na yamot na ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">10</td><td>hehe hello</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">11</td><td>nakakainis ka</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">12</td><td>Im so angry right now</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">13</td><td>Pwede ba mag ask</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">14</td><td>ayoko na ng requirements</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">15</td><td>nakakainis talaga ang sitwasyong ito</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">16</td><td>ang daming inaasahan sa akin</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">17</td><td>don't want to go to class</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">18</td><td>Pagod na ako sa existence ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">19</td><td>Okay ang pakiramdam ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">20</td><td>Hindi ko ma manage workload ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">21</td><td>I cant see any future for myself</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">22</td><td>bina-bagsak ako ng professor ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">23</td><td>I feel happy today</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">24</td><td>my hands are trembling</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">25</td><td>I'm tired of existing</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">26</td><td>I want to disappear from this world forever</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">27</td><td>iniwan nila ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">28</td><td>Malungkot na malungkot ako ngayon</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">29</td><td>I feel worthless</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">30</td><td>I want to die</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">31</td><td>gusto ko na sumigaw</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">32</td><td>I dont want to live anymore</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">33</td><td>Gusto ko na mawala sa mundo</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">34</td><td>i envision it like 50/50 that she might actualy like me back but whats holding her is the friendship with her firned. Because we a re a friend of 3. and the other half is she just thinks im her friend</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">35</td><td>galit na galit ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">36</td><td>nawalan na ako ng interes sa lahat</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">37</td><td>this is so unfair</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">38</td><td>Lagi akong malungkot kahit walang dahilan</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">39</td><td>I feel a constant sense of dread</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">40</td><td>im taking that as an option. Thank you ill do it right now</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">41</td><td>too much pressure from school and family</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">42</td><td>pinagtataksilan ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">43</td><td>I feel numb</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">44</td><td>mataas ang grade ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">45</td><td>nakalimutan na nila ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">46</td><td>matagal na akong nalulungkot</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">47</td><td>Ubos na ang energy ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">48</td><td>I hate everything</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">49</td><td>Parang lagi akong nag aalala</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">50</td><td>I feel abandoned by everyone</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">51</td><td>nakakarelax</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">52</td><td>Gusto ko na mamatay</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">53</td><td>Parang puso ko ay sira</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">54</td><td>I feel so stupid in class</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">55</td><td>Lagi akong naiiyak</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">56</td><td>Hindi na ako dapat mabuhay</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">57</td><td>my girlfriend broke up with me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">58</td><td>I don't want to study anymore</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">59</td><td>pagod sa pag aaral</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">60</td><td>I feel so behind in school</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">61</td><td>Pagod na ako mabuhay</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">62</td><td>I need help im panicking</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">63</td><td>I sit alone in class every day</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">64</td><td>I cant control my anger</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">65</td><td>this makes my blood boil</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">66</td><td>I dont think anyone cares about me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">67</td><td>I feel invisible to everyone</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">68</td><td>I want to scream</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">69</td><td>walang saysay ang buhay ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">70</td><td>I feel like exploding</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">71</td><td>I freeze when she talks to me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">72</td><td>I wake up anxious every morning</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">73</td><td>ang hirap maging estudyante</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">74</td><td>magpapakamatay na ako</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">75</td><td>I cant stand this anymore</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">76</td><td>I feel content</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">77</td><td>Pagod na ako sa routine na to</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">78</td><td>I have been thinking of ways to hurt myself</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">79</td><td>I don't know if there's a point of living anymore</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">80</td><td>Im going to end my life</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">81</td><td>I passed my exam</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">82</td><td>Sana hindi na ako nagising</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">83</td><td>I have no energy left</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">84</td><td>walang nakikinig sa akin</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">85</td><td>Natatakot ako sa mga tao</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">86</td><td>Parang paulit ulit lang ang lungkot</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">87</td><td>Sobrang lungkot ko ngayon</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">88</td><td>I feel like nobody sees how much Im hurting</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">89</td><td>nasusuka ako sa kaka-nervous</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">90</td><td>nobody talks to me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">91</td><td>bakit palaging mali ang ginagawa nila</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">92</td><td>I feel hopeless and worthless</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">93</td><td>grabe ang inis ko ngayon</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">94</td><td>wala namang masama</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">95</td><td>my chest is tight</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">96</td><td>I feel trapped and the only way out is death</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">97</td><td>kung mawala ako okay lang</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">98</td><td>sobrang inis ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">99</td><td>goodbye</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">100</td><td>people keep disrespecting me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">101</td><td>Im looking forward to the weekend</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">102</td><td>everything is piling up and I cant cope</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">103</td><td>I can't go on like this</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">104</td><td>I feel like Im always running out of time</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">105</td><td>im so depressed</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">106</td><td>I just want everything to stop</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">107</td><td>sobrang kaba ko</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">108</td><td>i want ot kill myself</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">109</td><td>are you feeling anxious</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">110</td><td>I feel like I cannot go on anymore</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">111</td><td>I am so irritated today</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">112</td><td>I have no motivation to do anything</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">113</td><td>I just want to cry all day</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">114</td><td>I cant believe they did that to me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">115</td><td>I feel like everyone would be better off without me</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">116</td><td>what kind of suppoer</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">117</td><td>I feel so much pressure from everyone</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">118</td><td>hey</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">119</td><td>chill lang</td><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr><td class="num">120</td><td>parang hindi ako kasama sa grupo</td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td class="num">1</td><td>mamaya na ako matutulog, may gagawin pa</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">2</td><td>sobrang inis ko sa ginawa niyo</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">3</td><td>don&#x27;t test me right now, I am really angry</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">4</td><td>I&#x27;m going to end my life, please forgive me</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">5</td><td>nakakaasar ka at nakakainis yang ugali mo</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">6</td><td>I can&#x27;t stop worrying about what might happen tomorrow</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">7</td><td>I am furious and I want them to know it</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">8</td><td>I am seriously mad and I don&#x27;t care who knows it</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">9</td><td>I want to kill myself</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">10</td><td>I swallowed some pills because I give up</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">11</td><td>hindi ako makatulog sa kaba sa quiz bukas</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">12</td><td>putang ina, ang tagal niyong mag-reply</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">13</td><td>gustong-gusto kong itapon lahat dahil sobrang galit ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">14</td><td>my palms are sweating and my mind is racing right now</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">15</td><td>good morning, ang sarap ng tulog ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">16</td><td>ang sakit na lagi na lang akong naiwan</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">17</td><td>I&#x27;m fuming mad and I can&#x27;t even explain it</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">18</td><td>gusto ko nang mamatay</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">19</td><td>I feel so alone in this world</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">20</td><td>hindi na ako masaya kahit sa anong gawin ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">21</td><td>I bought new shoes today and I like them</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">22</td><td>I feel empty inside, like nothing matters anymore</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">23</td><td>I have already planned how to end my life</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">24</td><td>tapos ko na lahat ng dapat kong gawin, hihinto na ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">25</td><td>Gumising ako ng maaga at nag-ayos ng kama</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">26</td><td>May klase ako sa alas-diyes mamaya</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">27</td><td>I&#x27;m so angry my blood is boiling</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">28</td><td>ang lungkot ng araw ko, wala akong makausap</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">29</td><td>I keep overthinking every little thing until I can&#x27;t sleep</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">30</td><td>I want to punch someone right now</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">31</td><td>The weather is nice today</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">32</td><td>parang ang bigat at walang laman ang dibdib ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">33</td><td>nahihilo na ako sa kakaisip</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">34</td><td>walang nakakaintindi sa nararamdaman ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">35</td><td>paulit-ulit kong inaalala ang masasakit na alaala</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">36</td><td>ang daming nasa isip ko, sabog na sabog na ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">37</td><td>I feel unwanted and excluded everywhere I go</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">38</td><td>I feel a lump in my throat every time I think about it</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">39</td><td>nawalan na ako ng gana sa mga dati kong hilig</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">40</td><td>I can&#x27;t stop my heart from pounding, it&#x27;s scaring me</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">41</td><td>I just want to be alone because I feel so down</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">42</td><td>I feel like nobody loves me</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">43</td><td>nakakainis na nakakainis ka, gusto kitang harapin</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">44</td><td>May concert daw sa November, excited ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">45</td><td>I feel so sad that I can&#x27;t even eat properly</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">46</td><td>I miss them so much it hurts to breathe</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">47</td><td>I&#x27;m just taking a break from studying</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">48</td><td>I keep imagining the worst happening over and over</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">49</td><td>hindi ko na kaya, magpapakamatay na ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">50</td><td>I want to die so the pain stops forever</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">51</td><td>my heart is racing and I can&#x27;t calm down</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">52</td><td>I&#x27;m scrolling through social media</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">53</td><td>umiiyak ako mag-isa sa kwarto</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">54</td><td>ang init ng ulo ko, ayoko munang kausapin kahit sino</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">55</td><td>Umuulan ngayon, dala ko ang payong ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">56</td><td>I&#x27;ve been crying all day and I can&#x27;t stop</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">57</td><td>I&#x27;m ready to die tonight</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">58</td><td>I feel panicky and I don&#x27;t know why</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">59</td><td>I&#x27;m just watching Netflix right now</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">60</td><td>maghihigpit lang ako ng tali ngayong gabi</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">61</td><td>nagngangalit ako ngayon, para akong sasabog</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">62</td><td>I am so pissed off right now, I could break something</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">63</td><td>I&#x27;m terrified I&#x27;ll fail everything and I can&#x27;t turn my mind off</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">64</td><td>I keep getting a knot in my stomach from worrying</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">65</td><td>nanginginig ang kamay ko sa kaba</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">66</td><td>My friends and I played basketball yesterday</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">67</td><td>bwisit na bwisit na talaga ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">68</td><td>Nilinis ko ang kwarto ko kanina</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">69</td><td>malungkot na malungkot na talaga ako araw-araw</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">70</td><td>kakain na ako kasi gutom na ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">71</td><td>paulit-ulit kong iniisip ang mga pangyayari at di ako kumalma</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">72</td><td>I&#x27;m worried sick about my health and I can&#x27;t stop checking it</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">73</td><td>hanggang ngayon kinakabahan pa rin ako sa nangyari</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">74</td><td>I&#x27;m doing my homework right now</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">75</td><td>sobrang lungkot ko ngayon, gusto kong umiyak</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">76</td><td>wala na akong rason para mabuhay</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">77</td><td>I already bought what I need to end myself</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">78</td><td>tinitignan ko na ang pinakamataas na building dito para tumalon</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">79</td><td>I&#x27;m going to take all these pills tonight</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">80</td><td>I finished my project earlier than expected</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">81</td><td>I could actually scream at the top of my lungs</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">82</td><td>pinagpapawisan ako kahit hindi naman mainit, ang kaba ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">83</td><td>I am about to end my life, goodbye</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">84</td><td>Nagtext ako sa kaibigan ko kagabi</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">85</td><td>I ate lunch with my classmates today</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">86</td><td>wala nang pag-asa, mamamatay na lang ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">87</td><td>I don&#x27;t want to wake up anymore</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">88</td><td>it hurts so much and I don&#x27;t know how to move on</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">89</td><td>sa gabing ito, aalis na ako sa mundo</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">90</td><td>I lost my best friend and I just feel empty</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">91</td><td>I&#x27;ve been thinking of jumping off the bridge</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">92</td><td>I&#x27;m raging right now, stay away from me</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">93</td><td>nararamdaman kong umaapaw ang galit ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">94</td><td>I feel like I&#x27;m about to explode in anger</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">95</td><td>sobrang kaba ko, para akong masusuka sa exam</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">96</td><td>I feel rejected and heartbroken right now</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">97</td><td>I&#x27;ve already written my goodbye letters</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">98</td><td>galit na galit ako at gusto kong sumigaw</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">99</td><td>parang wala nang kulay ang mundo ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">100</td><td>parang nasasakal ako sa kaba</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">101</td><td>hindi ako makahinga sa sobrang pag-aalala ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">102</td><td>Gumuho na lahat, gusto ko nang tapusin ang lahat</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">103</td><td>Ayoko na, lulunukin ko lahat ng gamot</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">104</td><td>I passed my math exam</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">105</td><td>wala akong lakas gawin ang kahit ano, lungkot lang</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">106</td><td>I hate you, don&#x27;t ever talk to me again</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">107</td><td>Napanood ko na ang movie na sinabi mo</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">108</td><td>I feel like I&#x27;m carrying all this sadness alone</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">109</td><td>hindi na ako magtatagal sa mundong to</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">110</td><td>nakakagalit talaga ang mga ginagawa nila, walang hiya</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">111</td><td>Naalala ko lang na may meeting tayo bukas</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">112</td><td>I&#x27;ve decided, wala nang makakapigil sa akin</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">113</td><td>I&#x27;m looking forward to the upcoming holiday</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">114</td><td>I&#x27;m so nervous I feel like I&#x27;m shaking</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">115</td><td>hindi ko mapigilan ang takot na nararamdaman ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">116</td><td>parang may nagbagsak ng dingding sa dibdib ko sa sobrang kaba</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">117</td><td>sakit sa ulo ang mga ginagawa nila, nabuwisit ako</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">118</td><td>chill lang ang weekend ko</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">119</td><td>I&#x27;ll go to the mall this weekend</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="num">120</td><td>grabe ang inis ko, kalmado lang ang iba</td><td></td><td></td><td></td><td></td><td></td></tr>
   </tbody>
 </table>
 
