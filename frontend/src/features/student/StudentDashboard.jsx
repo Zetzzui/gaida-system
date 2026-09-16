@@ -239,6 +239,7 @@ export default function StudentDashboard() {
   const [showSettings,      setShowSettings]      = useState(false);
   const [requestingCounselor, setRequestingCounselor] = useState(false);
   const [counselorRequested,  setCounselorRequested]  = useState(false);
+  const [streamingStarted,    setStreamingStarted]    = useState(false);
 
   // ── Rating state ─────────────────────────────────────────────
   const [showRating,        setShowRating]        = useState(false);
@@ -414,6 +415,7 @@ export default function StudentDashboard() {
     setMessages(prev => [...prev, { role: 'user', text, timestamp: new Date() }]);
     setInput('');
     setSending(true);
+    setStreamingStarted(false);
     if (window.innerWidth < 1024) setSidebarOpen(false);
 
     const sessionId = localStorage.getItem('session_id');
@@ -441,13 +443,21 @@ export default function StudentDashboard() {
         return;
       }
 
-      // Reserve a live bot bubble — text grows as tokens stream in.
-      let botMsg = { role: 'bot', text: '', timestamp: new Date() };
-      setMessages(prev => [...prev, botMsg]);
+      let botMsg = null;
 
       const reader  = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+
+      const appendOrUpdateBot = (next) => {
+        if (!botMsg) {
+          botMsg = next;
+          setMessages(prev => [...prev, botMsg]);
+        } else {
+          botMsg = next;
+          setMessages(prev => [...prev.slice(0, -1), botMsg]);
+        }
+      };
 
       const processLine = (line) => {
         const trimmed = line.trim();
@@ -457,18 +467,21 @@ export default function StudentDashboard() {
         try { event = JSON.parse(trimmed); } catch { return; }
 
         if (event.type === 'delta') {
-          botMsg = { ...botMsg, text: botMsg.text + event.text };
-          setMessages(prev => [...prev.slice(0, -1), botMsg]);
+          setStreamingStarted(true);
+          const prevText = botMsg ? botMsg.text : '';
+          appendOrUpdateBot({
+            role: 'bot',
+            text: prevText + event.text,
+            timestamp: botMsg ? botMsg.timestamp : new Date(),
+          });
         } else if (event.type === 'done') {
           const result = event.result || {};
           if (result.session_id)       localStorage.setItem('session_id', result.session_id);
           if (result.severity)         setSeverity(result.severity);
           if (result.counselor_active) setCounselorActive(true);
 
-          // Safety net: if no token ever arrived, show the final reply.
-          if (!result.counselor_active && !botMsg.text && result.response) {
-            botMsg = { ...botMsg, text: result.response };
-            setMessages(prev => [...prev.slice(0, -1), botMsg]);
+          if (!result.counselor_active && (!botMsg || !botMsg.text) && result.response) {
+            appendOrUpdateBot({ role: 'bot', text: result.response, timestamp: new Date() });
           }
         }
       };
@@ -882,7 +895,7 @@ export default function StudentDashboard() {
           )}
 
           {/* Bot typing */}
-          {sending && !counselorActive && (
+          {sending && !counselorActive && !streamingStarted && (
             <div className="flex justify-start items-end gap-2">
               <Avatar role="bot" accent={theme.accent} />
               <div
