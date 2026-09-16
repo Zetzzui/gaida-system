@@ -120,3 +120,18 @@ def test_hypothetical_suicidal_kept_at_high_not_crisis():
     assert r["intent"] == "suicidal"
     assert r["anxiety_level"] == "high"
     assert r["confidence"] < 0.99
+
+
+def test_greeting_after_crisis_does_not_stay_high():
+    """A neutral greeting after a crisis message must not remain High — the
+    running-confidence memory should relax genuine non-distress turns."""
+    from app.services.intent_router import _prepare_turn
+
+    crisis = _prepare_turn("Ayoko na mabuhay, gusto ko nang mamatay", "SESS_TEST_GREET", "u1")
+    assert crisis["severity"] == "Crisis"
+
+    greeting = _prepare_turn("hello", "SESS_TEST_GREET", "u1")
+    assert greeting["severity"] not in ("High", "Crisis"), f"got {greeting['severity']}"
+
+    real_distress = _prepare_turn("cant breathe, chest is tight", "SESS_TEST_GREET", "u1")
+    assert real_distress["severity"] in ("Moderate", "High", "Crisis"), f"got {real_distress['severity']}"

@@ -24,8 +24,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report
 from sklearn.pipeline import Pipeline
+
+from app.services.text_prep import STOPWORDS, preprocess
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -67,19 +69,30 @@ def build_pipelines():
         "ngram_range": (1, 2),
         "max_features": 5000,
         "sublinear_tf": True,
+        "preprocessor": preprocess,
+        "stop_words": sorted(STOPWORDS),
     }
     return {
         "Logistic Regression": Pipeline([
             ("tfidf", TfidfVectorizer(**tfidf_params)),
-            ("clf", LogisticRegression(max_iter=1000, C=1.0, random_state=42)),
+            ("clf", LogisticRegression(
+                max_iter=1000, C=1.0, random_state=42,
+                class_weight="balanced",
+            )),
         ]),
         "Random Forest": Pipeline([
             ("tfidf", TfidfVectorizer(**tfidf_params)),
-            ("clf", RandomForestClassifier(n_estimators=200, random_state=42)),
+            ("clf", RandomForestClassifier(
+                n_estimators=200, random_state=42,
+                class_weight="balanced_subsample",
+            )),
         ]),
         "Neural Network": Pipeline([
             ("tfidf", TfidfVectorizer(**tfidf_params)),
-            ("clf", MLPClassifier(hidden_layer_sizes=(256, 128, 64), max_iter=500, random_state=42)),
+            ("clf", MLPClassifier(
+                hidden_layer_sizes=(256, 128, 64), max_iter=500,
+                random_state=42,
+            )),
         ]),
     }
 
@@ -108,17 +121,22 @@ def train_and_compare():
         pipeline.fit(X_train, y_train)
         y_pred = pipeline.predict(X_test)
         test_acc = accuracy_score(y_test, y_pred)
+        macro_f1 = f1_score(y_test, y_pred, average="macro", zero_division=0)
         cv_acc = cross_val_score(pipeline, texts, labels, cv=5).mean()
-        report = classification_report(y_test, y_pred, output_dict=True)
+        report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         results[name] = {
             "test_accuracy": round(test_acc * 100, 2),
+            "macro_f1": round(macro_f1 * 100, 2),
             "cv_accuracy": round(cv_acc * 100, 2),
             "classification_report": report,
+            "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
             "pipeline": pipeline,
         }
 
-        print(f"  {name}: Test={test_acc*100:.2f}% | CV={cv_acc*100:.2f}%")
+        suicidal_recall = round(report.get("suicidal", {}).get("recall", 0) * 100, 2)
+        print(f"  {name}: Test Acc={test_acc*100:.2f}% | Macro-F1={macro_f1*100:.2f}% "
+              f"| Suicidal Recall={suicidal_recall}% | CV={cv_acc*100:.2f}%")
 
     # Save all models
     model_paths = {
@@ -130,14 +148,14 @@ def train_and_compare():
         with open(path, "wb") as f:
             pickle.dump(results[name]["pipeline"], f)
 
-    # Pick best by test accuracy
-    best_name = max(results, key=lambda n: results[n]["test_accuracy"])
+    # Pick best by macro-F1 (balanced across all classes, not just accuracy)
+    best_name = max(results, key=lambda n: results[n]["macro_f1"])
     best_pipeline = results[best_name]["pipeline"]
 
     with open(BEST_MODEL_PATH, "wb") as f:
         pickle.dump(best_pipeline, f)
 
-    print(f"\n✅ Best model: {best_name} ({results[best_name]['test_accuracy']}%)")
+    print(f"\n[OK] Best model: {best_name} (Macro-F1={results[best_name]['macro_f1']}%)")
     print(f"   Saved to: {BEST_MODEL_PATH}")
 
     return {
@@ -145,7 +163,11 @@ def train_and_compare():
         "results": {
             name: {
                 "test_accuracy": r["test_accuracy"],
+                "macro_f1": r["macro_f1"],
                 "cv_accuracy": r["cv_accuracy"],
+                "suicidal_recall": round(
+                    r["classification_report"].get("suicidal", {}).get("recall", 0) * 100, 2
+                ),
             }
             for name, r in results.items()
         }
@@ -321,11 +343,12 @@ def classify_intent_all(text: str) -> dict:
 if __name__ == "__main__":
     report = train_and_compare()
     print("\n=== FINAL COMPARISON ===")
-    print(f"{'Model':<25} {'Test Acc':>10} {'CV Acc':>10}")
-    print("-" * 48)
+    print(f"{'Model':<25} {'Test Acc':>9} {'Macro-F1':>10} {'CV Acc':>9} {'Suicidal Recall':>16}")
+    print("-" * 75)
     for name, r in report["results"].items():
-        print(f"{name:<25} {r['test_accuracy']:>9}% {r['cv_accuracy']:>9}%")
-    print(f"\nBest: {report['best_model']}")
+        print(f"{name:<25} {r['test_accuracy']:>8}% {r['macro_f1']:>8}% {r['cv_accuracy']:>8}% "
+              f"{r['suicidal_recall']:>14}%")
+    print(f"\nBest: {report['best_model']} (by macro-F1)")
 
     # Demo classify_intent with all 3
     print("\n=== DEMO: ALL 3 MODELS ON SAMPLE MESSAGES ===\n")
