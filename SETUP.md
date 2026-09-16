@@ -1,105 +1,102 @@
-# GAIDA — Local Setup Guide
+# GAIDA System — Full Setup Guide (Terminal)
 
-Run the full system (backend + frontend) locally on any machine, including how to make
-edits and push them back.
+## On the OLD laptop — push everything first
 
-## 1. Prerequisites
-
-- **Git** (clone + commit/push)
-- **Python 3.13** — use the same major version as the other machines (3.14 may lack
-  prebuilt wheels for some packages)
-- **Node.js** LTS (v18+)
-
-## 2. Clone the repository
-
-```bash
-git clone https://github.com/nyerrr/gaida-system.git
-cd gaida-system
+```powershell
+cd C:\Users\YourName\Documents\gaida-system
+git status
+git add -A
+git commit -m "your message"
+git push origin GAIDA-commits
 ```
 
-## 3. Backend
+---
 
-```bash
+## On the NEW laptop — from scratch
+
+### 1. Install prerequisites
+
+Download and install:
+- Git: https://git-scm.com/downloads
+- Python 3.13: https://www.python.org/downloads/
+- Node.js LTS: https://nodejs.org
+
+### 2. Clone and switch branch
+
+```powershell
+cd C:\Users\YourName\Documents
+git clone https://github.com/nyerrr/gaida-system.git
+cd gaida-system
+git checkout GAIDA-commits
+git pull origin GAIDA-commits
+```
+
+### 3. Set up backend
+
+```powershell
 cd backend
 python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # macOS / Linux
-
+venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### Environment variables
+### 4. Set up frontend
 
-Create `backend\.env` (this file is gitignored — it does not exist in the clone).
-Copy the values from your Render service's Environment Variables:
-
-```
-OPENAI_API_KEY=...
-SUPABASE_URL=...
-SUPABASE_KEY=...
-```
-
-### Run the backend
-
-```bash
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-> `--reload` is for local development only. Use the Dockerfile / render.yaml for production.
-
-## 4. Frontend
-
-In a second terminal:
-
-```bash
-cd frontend
+```powershell
+cd ..\frontend
 npm install
+```
+
+### 5. Copy your .env files (DO NOT SKIP)
+
+These files hold your API keys and are excluded from git.
+Copy them manually from the old laptop via USB, Google Drive, etc.
+
+Files to copy:
+- backend\.env
+- frontend\.env
+
+### 6. Verify everything works
+
+Open terminal 1 (backend):
+```powershell
+cd C:\Users\YourName\Documents\gaida-system\backend
+venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
+```
+
+Open terminal 2 (frontend):
+```powershell
+cd C:\Users\YourName\Documents\gaida-system\frontend
 npm run dev
 ```
 
-Open http://localhost:5173
+Open browser: http://localhost:5173
 
-The frontend talks to the backend at `VITE_BACKEND_URL` (defaults to
-`http://localhost:8000`, which matches the local backend, so no config needed on this
-machine). Set it to your deployed Render URL only if you want the local frontend to hit
-the production backend.
+### 7. Run tests
 
-## 5. Test logins
-
-| Portal    | Credentials |
-|-----------|-------------|
-| Student   | Student number `2024001`, email `student1@ue.edu.ph`, access code `ACCESS123` |
-| Counselor | `counselor01` / `counsel123` |
-
-Flow: Student → login → accept consent → chat. Open the Counselor portal in another tab
-to see alerts and take over a session.
-
-## 6. Making edits and pushing
-
-Recommended workflow — always work on a branch, then merge into `main`:
-
-```bash
-git checkout main
-git pull origin main
-git checkout -b my-fix
-# ...edit files...
-git add .
-git commit -m "fix: describe the change"
-git push origin my-fix
-git push origin my-fix:main      # fast-forward main from your branch
+```powershell
+cd C:\Users\YourName\Documents\gaida-system\backend
+venv\Scripts\Activate.ps1
+python -m pytest -q
 ```
 
-Only push when you're sure — `main` is what Render/Vercel deploy.
+Expected: 11 passed.
 
-## First-run notes (important)
+---
 
-- **ML models**: the trained `.pkl` models are committed under
-  `backend/training/models/`, so no retraining is needed. Startup simply loads them.
-- **Whisper (voice)**: the "medium" transcription model (~1.5 GB) downloads to
-  `~/.cache/whisper` on your **first voice message**. Text chat works immediately.
-- **ffmpeg**: not required to install on the system — `imageio-ffmpeg` (in
-  `requirements.txt`) supplies a bundled ffmpeg that the acoustic features and Whisper
-  automatically fall back to.
-- **Supabase**: if the keys are missing, the backend still starts but persistence
-  (sessions, alerts, consent) will silently degrade — set them before testing the full
-  flow.
+## Going forward (keep both laptops in sync)
+
+Before starting work:
+```powershell
+git pull origin GAIDA-commits
+```
+
+After finishing work:
+```powershell
+git add -A
+git commit -m "your message"
+git push origin GAIDA-commits
+```
+
+Always pull before you start and push before you stop.
