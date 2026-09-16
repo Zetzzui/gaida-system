@@ -1,43 +1,44 @@
 ==============================================================================
 GAIDA SCRIBBLE-DETECTION MODEL REPORT
 ==============================================================================
-Dataset: 815 labeled messages, 5 classes
-Class distribution: anger=56, anxiety=311, neutral=150, sadness=162, suicidal=136
-Split: stratified 80/20 (train/test), seed 42
+Dataset: 815 REAL labeled messages, 5 classes
+Real class distribution: anger=56, anxiety=311, neutral=150, sadness=162, suicidal=136
+Augmentation: +115 curated anger examples (anger=115) — TRAIN ONLY
+Split: stratified 80/20 (train/test), seed 42; test set = 163 real messages, NEVER augmented
 Features: TF-IDF (1-2 grams, max 5000) + Taglish-aware preprocessing
 Preprocessing: lower, collapse repeats, expand contractions, drop 134 stopwords
 
 Model                      Test Acc   Macro-F1  Suicidal Recall
 --------------------------------------------------------------
-Logistic Regression          69.94%     62.41%           88.89%
-Random Forest                61.96%     54.30%           70.37%
-Neural Network               68.71%     64.25%           74.07%
+Logistic Regression          68.71%     62.98%           88.89%
+Random Forest                61.96%     54.16%           74.07%
+Neural Network               66.26%     61.17%           77.78%
 
 ==============================================================================
 ENSEMBLE (majority vote, LR tiebreak) - what production runs
 ==============================================================================
-Accuracy : 70.55%
-Macro-F1 : 63.11%   (no-skill baseline for 5 classes = 20%)
+Accuracy : 68.10%
+Macro-F1 : 62.08%   (no-skill baseline for 5 classes = 20%)
 Suicidal recall: 85.19%  [target >= 95% - never miss a crisis phrase]
 
 PER-CLASS (ensemble):
 class          precision   recall       f1
 ------------------------------------------
-anger             66.67%   18.18%   28.57%
-anxiety           75.81%   75.81%   75.81%
-neutral           60.53%   76.67%   67.65%
-sadness           71.43%   60.61%   65.57%
-suicidal          71.88%   85.19%   77.97%
+anger             27.27%   27.27%   27.27%
+anxiety           74.58%   70.97%   72.73%
+neutral           61.11%   73.33%   66.67%
+sadness           73.08%   57.58%   64.41%
+suicidal          74.19%   85.19%   79.31%
 
 CONFUSION MATRIX (rows=true, cols=predicted):
                    anger     anxiety     neutral     sadness    suicidal
-anger                  2           3           2           2           2
-anxiety                1          47           8           5           1
-neutral                0           3          23           1           3
-sadness                0           6           4          20           3
+anger                  3           3           1           2           2
+anxiety                4          44           9           4           1
+neutral                1           3          22           1           3
+sadness                3           6           3          19           2
 suicidal               0           3           1           0          23
 
-BEST SINGLE MODEL: Neural Network
+BEST SINGLE MODEL: Logistic Regression
 
 FINALIST NOTE: confidence < 0.55 (threshold) -> 'uncertain', delegated
 to the rule engine + context guards; this is a feature, not a gap.

@@ -34,6 +34,7 @@ from app.services.text_prep import STOPWORDS, preprocess
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TRAINING_DATA = BASE_DIR / "training" / "anxiety_training.jsonl"
+AUGMENTATION_FILE = BASE_DIR / "training" / "anger_augmentation.jsonl"
 MODEL_DIR = BASE_DIR / "training" / "models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -52,6 +53,20 @@ _model = None
 def load_dataset():
     data = []
     with open(TRAINING_DATA, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                data.append(json.loads(line))
+    texts = [d["text"] for d in data]
+    labels = [d["label"] for d in data]
+    return texts, labels
+
+
+def load_anger_augmentation():
+    data = []
+    if not AUGMENTATION_FILE.exists():
+        return [], []
+    with open(AUGMENTATION_FILE, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -107,11 +122,18 @@ def train_and_compare():
     """
     print("Loading dataset...")
     texts, labels = load_dataset()
-    print(f"Total examples: {len(texts)}")
+    aug_texts, aug_labels = load_anger_augmentation()
+    print(f"Real examples: {len(texts)}")
 
     X_train, X_test, y_train, y_test = train_test_split(
         texts, labels, test_size=0.2, random_state=42, stratify=labels
     )
+    if aug_texts:
+        n_aug = len(aug_texts)
+        print(f"Adding {n_aug} curated anger examples to TRAIN ONLY "
+              f"(test set = real 163 messages, untouched)")
+        X_train = X_train + aug_texts
+        y_train = y_train + aug_labels
 
     pipelines = build_pipelines()
     results = {}
@@ -122,7 +144,7 @@ def train_and_compare():
         y_pred = pipeline.predict(X_test)
         test_acc = accuracy_score(y_test, y_pred)
         macro_f1 = f1_score(y_test, y_pred, average="macro", zero_division=0)
-        cv_acc = cross_val_score(pipeline, texts, labels, cv=5).mean()
+        cv_acc = cross_val_score(pipeline, X_train, y_train, cv=5).mean()
         report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         results[name] = {

@@ -82,6 +82,7 @@ def _evaluate(y_true, y_pred, labels):
 
 def main():
     texts, labels = mc.load_dataset()
+    aug_texts, aug_labels = mc.load_anger_augmentation()
     classes = dict(Counter(labels))
     class_names = sorted(classes)
 
@@ -104,9 +105,14 @@ def main():
     out("=" * 78)
     out("GAIDA SCRIBBLE-DETECTION MODEL REPORT")
     out("=" * 78)
-    out(f"Dataset: {len(texts)} labeled messages, {len(class_names)} classes")
-    out(f"Class distribution: {', '.join(f'{k}={v}' for k, v in sorted(classes.items()))}")
-    out(f"Split: stratified 80/20 (train/test), seed {SEED}")
+    out(f"Dataset: {len(texts)} REAL labeled messages, {len(class_names)} classes")
+    out(f"Real class distribution: {', '.join(f'{k}={v}' for k, v in sorted(classes.items()))}")
+    if aug_texts:
+        aug_counts = Counter(aug_labels)
+        out(f"Augmentation: +{len(aug_texts)} curated anger examples "
+            f"({', '.join(f'{k}={v}' for k, v in sorted(aug_counts.items()))}) - TRAIN ONLY")
+    out(f"Split: stratified 80/20 (train/test), seed {SEED}; "
+        f"test set = {len(X_test)} real messages, NEVER augmented")
     out(f"Features: TF-IDF (1-2 grams, max 5000) + Taglish-aware preprocessing")
     out(f"Preprocessing: lower, collapse repeats, expand contractions, "
         f"drop {len(mc.STOPWORDS) if hasattr(mc, 'STOPWORDS') else 'curated'} stopwords")

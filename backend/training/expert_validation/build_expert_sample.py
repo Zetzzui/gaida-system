@@ -29,7 +29,7 @@ def main():
     rng.shuffle(sample_rows)
 
     with open(BASE / "sample_for_experts.csv", "w", encoding="utf-8-sig", newline="") as f:
-        f.write("sample_id,text,counselor_A_label,counselor_B_label,notes\n")
+        f.write("sample_id,text,counselor_A_label,counselor_B_label\n")
         for i, r in enumerate(sample_rows, start=1):
             f.write(f"{i},\"{r['text'].replace('\"', '\"\"')}\",,,\n")
 
