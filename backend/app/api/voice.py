@@ -17,9 +17,27 @@ router = APIRouter(prefix="/audio", tags=["audio"])
 # ── Lazy load Whisper — loads on first voice request, not at startup ──
 _whisper_model = None
 
+
+def _ensure_ffmpeg_on_path():
+    """Whisper shells out to the `ffmpeg` command. If it isn't on the system,
+    expose the bundled static ffmpeg from imageio-ffmpeg through PATH so
+    transcription works on hosts with no apt (e.g. Render)."""
+    import shutil
+    if shutil.which("ffmpeg"):
+        return
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        _dir = os.path.dirname(exe)
+        os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
 def _get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
+        _ensure_ffmpeg_on_path()
         import whisper
         print("[GAIDA] Loading Whisper model (first voice request)...")
         _whisper_model = whisper.load_model("medium")

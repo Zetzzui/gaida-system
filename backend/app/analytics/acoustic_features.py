@@ -12,13 +12,21 @@ def _convert_to_wav(audio_bytes: bytes) -> bytes:
     """
     import os
 
-    # Try to find ffmpeg — system PATH first, then CapCut fallback
+    # Try to find ffmpeg — system PATH first, then bundled fallbacks
     ffmpeg_cmd = "ffmpeg"
     capcut_ffmpeg = os.path.expandvars(
         r"C:\Users\Rainier J. Burlasa\AppData\Local\CapCut\Apps\8.2.0.3462\ffmpeg.exe"
     )
-    if not _is_ffmpeg_available("ffmpeg") and os.path.exists(capcut_ffmpeg):
+    if _is_ffmpeg_available("ffmpeg"):
+        ffmpeg_cmd = "ffmpeg"
+    elif os.path.exists(capcut_ffmpeg):
         ffmpeg_cmd = capcut_ffmpeg
+    else:
+        try:
+            import imageio_ffmpeg  # bundled static ffmpeg (no apt needed)
+            ffmpeg_cmd = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
 
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
         tmp_in.write(audio_bytes)
