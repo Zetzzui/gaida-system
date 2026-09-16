@@ -129,7 +129,7 @@ SAMPLES = {
         "don't test me right now, I am really angry",
     ],
     "suicidal": [
-        "I want to kill myself",
+        "I want to end my life tonight",
         "gusto ko nang mamatay",
         "I have already planned how to end my life",
         "hindi ko na kaya, magpapakamatay na ako",
