@@ -6,6 +6,11 @@ from difflib import SequenceMatcher
 PHRASE_FUZZY_THRESHOLD = 0.72
 TOKEN_FUZZY_THRESHOLD = 0.84
 
+from app.services.crisis_guards import (
+    has_venting_context,
+    resolve_crisis_level,
+)
+
 STOPWORDS = {
     "ang", "ng", "sa", "ako", "ikaw", "siya",
     "ko", "mo", "niya", "na", "pa", "lang",
@@ -301,13 +306,15 @@ def analyze_with_rules(user_input: str) -> Dict[str, object]:
 
     # Hard escalation: suicidal always wins if any keyword matched
     if matched["suicidal"]:
+        verdict = resolve_crisis_level(matched["suicidal"], text)
         return {
-            "intent": "suicidal",
-            "confidence": 0.99,
-            "intensity": 1.0,
+            "intent": verdict["intent"],
+            "confidence": verdict["confidence"],
+            "intensity": 1.0 if verdict["intent"] == "suicidal" else 0.5,
             "matched_keywords": {"suicidal": matched["suicidal"]},
-            "escalate": True,
-            "escalation_message": ESCALATION_MESSAGE,
+            "escalate": verdict["intent"] == "suicidal",
+            "guarded": True,
+            "escalation_message": ESCALATION_MESSAGE if verdict["intent"] == "suicidal" else None,
         }
 
     total_score = sum(scores.values())

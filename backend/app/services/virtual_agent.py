@@ -5,6 +5,14 @@ PHRASE_FUZZY_THRESHOLD = 0.85
 TOKEN_FUZZY_THRESHOLD = 0.82
 FUZZY_WEIGHT_MULTIPLIER = 0.9
 
+from app.services.crisis_guards import (
+    has_fiction_context,
+    has_hypothetical_context,
+    has_venting_context,
+    is_soft_venting_phrase,
+    resolve_crisis_level,
+)
+
 # ---------------------------------------------------------------------------
 # COUNSELOR FIRST AID PROTOCOLS
 # ---------------------------------------------------------------------------
@@ -198,26 +206,83 @@ def _get_negative_context_multiplier(txt: str) -> float:
     return multiplier
 
 
+def _context_override_for_suicidal(text: str):
+    """When ML flags suicidal language but no explicit self-harm keyword matched
+    (the rule hard-path already caught those), decide whether context actually
+    makes this fiction/venting rather than a real crisis.
+
+    Explicit self-referential phrases are never downgraded here — they would
+    have been caught by the hard path already.
+    """
+    if has_fiction_context(text):
+        return {"intent": "anger", "confidence": 0.55}
+    if has_venting_context(text):
+        return {"intent": "stress", "confidence": 0.60}
+    if has_hypothetical_context(text):
+        return {"intent": "suicidal", "confidence": 0.88}
+    return None
+
+
+def _windowed_fuzzy(kw: str, txt: str) -> bool:
+    """Match a multiword keyword against sliding windows of the text so a long
+    message can't dilute the similarity score below the threshold."""
+    kw_tokens = kw.split()
+    n = len(kw_tokens)
+    if n == 0:
+        return False
+    txt_tokens = _tokenize(txt)
+    for i in range(len(txt_tokens) - n + 1):
+        window = " ".join(txt_tokens[i:i + n])
+        if SequenceMatcher(None, kw, window).ratio() >= PHRASE_FUZZY_THRESHOLD:
+            return True
+    return False
+
+
+def _match_suicidal_keyword(txt: str, tokens: set):
+    """Return the matched suicidal keyword, preferring an explicit (hard)
+    self-harm phrase over a colloquial give-up phrase when both are present."""
+    found_soft = None
+    for kw, _weight in KEYWORDS.get("suicidal", []):
+        if ' ' in kw:
+            if re.search(r"\b" + re.escape(kw) + r"\b", txt) or \
+               _windowed_fuzzy(kw, txt):
+                if not is_soft_venting_phrase(kw):
+                    return kw
+                if found_soft is None:
+                    found_soft = kw
+        else:
+            if kw in tokens:
+                if not is_soft_venting_phrase(kw):
+                    return kw
+                if found_soft is None:
+                    found_soft = kw
+                continue
+            for t in tokens:
+                if SequenceMatcher(None, kw, t).ratio() >= TOKEN_FUZZY_THRESHOLD:
+                    if not is_soft_venting_phrase(kw):
+                        return kw
+                    if found_soft is None:
+                        found_soft = kw
+                    break
+    return found_soft
+
+
 def detect_intent_and_level(text: str) -> dict:
     txt = _normalize_text(text)
     tokens = set(_tokenize(txt))
 
-    # ── Safe phrase check — MUST be first ────────────────────────────────────
+    # ── Step 1: Suicidal keyword check — run BEFORE the safe-phrase mask so a
+    #    real crisis is never hidden (e.g. "ayoko na mag aral... gusto ko na
+    #    mamatay" must still be caught). Context guards below tune the level. ──
+    crisis_kw = _match_suicidal_keyword(txt, tokens)
+
+    if crisis_kw:
+        verdict = resolve_crisis_level([crisis_kw], txt)
+        return _build_result(verdict["intent"], verdict["confidence"])
+
+    # ── Step 3: Safe phrase check — masks venting, never masks a real crisis ──
     if _is_safe_phrase(txt):
         return _build_result("neutral", 0.3)
-
-    # ── Step 1: Suicidal keyword check ───────────────────────────────────────
-    for kw, weight in KEYWORDS.get("suicidal", []):
-        if ' ' in kw:
-            if re.search(r"\b" + re.escape(kw) + r"\b", txt) or \
-               SequenceMatcher(None, kw, txt).ratio() >= PHRASE_FUZZY_THRESHOLD:
-                return _build_result("suicidal", 0.99)
-        else:
-            if kw in tokens:
-                return _build_result("suicidal", 0.99)
-            for t in tokens:
-                if SequenceMatcher(None, kw, t).ratio() >= TOKEN_FUZZY_THRESHOLD:
-                    return _build_result("suicidal", 0.99)
 
     # ── Step 2: ML classifier ─────────────────────────────────────────────────
     try:
@@ -232,6 +297,14 @@ def detect_intent_and_level(text: str) -> dict:
         if ml_intent == "uncertain":
             raise Exception("ML uncertain — trying rule_intent fallback")
 
+        # Guard ML-reported suicidal when no explicit self-harm keyword matched
+        # (rule path already checks explicit keywords). If ML votes suicidal but
+        # the message is fiction/venting, downgrade instead of alerting.
+        if ml_intent == "suicidal":
+            override = _context_override_for_suicidal(text)
+            if override:
+                return _build_result(override["intent"], override["confidence"])
+
         neg_multiplier = _get_negative_context_multiplier(txt)
         ml_confidence = round(ml_confidence * neg_multiplier, 3)
         scaled_confidence = 0.3 + 0.7 * ml_confidence
@@ -242,7 +315,7 @@ def detect_intent_and_level(text: str) -> dict:
     except Exception:
         pass
 
-    # ── Step 3: rule_intent.py fallback ──────────────────────────────────────
+    # ── Step 4: rule_intent.py fallback ──────────────────────────────────────
     try:
         from app.services.rule_intent import analyze_with_rules
         rule_result = analyze_with_rules(text)
@@ -251,6 +324,11 @@ def detect_intent_and_level(text: str) -> dict:
         rule_confidence = rule_result.get("confidence", 0.3)
         rule_intensity = rule_result.get("intensity", 0.0)
         escalate = rule_result.get("escalate", False)
+
+        # rule_intent already applied the same context guards when it detected
+        # suicidal language — trust its verdict instead of re-scaling.
+        if rule_result.get("guarded"):
+            return _build_result(rule_result["intent"], rule_result["confidence"])
 
         if escalate or rule_intent == "suicidal":
             return _build_result("suicidal", 0.99)
@@ -277,6 +355,11 @@ def detect_intent_and_level(text: str) -> dict:
 
 
 def _build_result(intent: str, confidence: float, post_crisis: bool = False) -> dict:
+    # Anger is a valid emotion but an angry rant is not inherently an anxiety
+    # crisis — cap its severity so it can never reach "high"/alert level.
+    if intent == "anger":
+        confidence = min(confidence, 0.55)
+
     if confidence >= 0.99:
         return {
             "intent": intent,

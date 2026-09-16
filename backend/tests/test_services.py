@@ -2,6 +2,7 @@ import json
 from fastapi.testclient import TestClient
 
 from app.services.rule_intent import analyze_with_rules
+from app.services.virtual_agent import detect_intent_and_level, _build_result
 from app.main import app
 
 
@@ -81,3 +82,41 @@ def test_virtual_agent_stream_requires_auth():
     client = TestClient(app)
     r = client.post("/virtual-agent/stream", json={"message": "hello"})
     assert r.status_code == 401
+
+
+# ---- Tier 1: Detection accuracy guards ------------------------------------
+
+
+def test_safe_phrase_does_not_mask_real_crisis():
+    """A real suicidal phrase combined with a safe venting phrase must still
+    trigger crisis, not be neutralised by the safe-phrase whitelist."""
+    r = detect_intent_and_level("ayoko na mag aral, gusto ko na mamatay")
+    assert r["anxiety_level"] == "Crisis", f"got {r['anxiety_level']}"
+
+
+def test_school_venting_downgraded_to_stress():
+    """A soft give-up phrase in a school/work context is stress, not suicidal."""
+    r = analyze_with_rules("hindi ko na kaya ang requirements at deadlines, ayoko na ng lahat")
+    assert r["intent"] in ("stress", "sadness"), f"got {r['intent']}"
+    assert r["confidence"] <= 0.99, "should not be hard-escalated"
+
+
+def test_real_crisis_always_crisis():
+    """Explicit self-harm language with no fiction/venting context."""
+    r = detect_intent_and_level("i want to kill myself tonight")
+    assert r["anxiety_level"] == "Crisis"
+
+
+def test_anger_capped_below_high():
+    """Anger should never reach 'high' or 'Crisis' severity."""
+    r = _build_result("anger", 0.99)
+    assert r["anxiety_level"] == "low", f"got {r['anxiety_level']}"
+    assert r["anxiety_score"] == 1
+
+
+def test_hypothetical_suicidal_kept_at_high_not_crisis():
+    """Hypothetical hedged ideation still alerts (high) but avoids full crisis."""
+    r = detect_intent_and_level("what if i kill myself, does anyone care")
+    assert r["intent"] == "suicidal"
+    assert r["anxiety_level"] == "high"
+    assert r["confidence"] < 0.99
