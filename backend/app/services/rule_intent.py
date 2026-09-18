@@ -110,6 +110,18 @@ KEYWORDS: Dict[str, List[tuple]] = {
         ("pagod na ako sa existence", 3.5),
         ("ayoko na sa lahat", 3.0),
         ("parang wala nang saysay mabuhay", 3.8),
+        ("papatayin ko na ang sarili ko", 4.0),
+        ("papatayin ko ang sarili ko", 4.0),
+        ("patayin ko na ang sarili ko", 4.0),
+        ("patayin ko ang sarili ko", 4.0),
+        ("nag isip ng kamatayan", 3.8),
+        ("nag iisip ng kamatayan", 3.8),
+        ("nagiisip ng kamatayan", 3.8),
+        ("iniisip ko ang kamatayan", 3.8),
+        ("huling liham", 4.0),
+        ("nagpaalam na ako", 3.5),
+        ("wish i was never born", 3.5),
+        ("never born", 3.0),
     ],
 
     "anxiety": [

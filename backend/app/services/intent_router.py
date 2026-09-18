@@ -168,6 +168,10 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
             running_confidence = max(max_drop, running_confidence)
             running_confidence = round(running_confidence, 3)
 
+            if intent == "neutral" and not _detect_urgent(user_message):
+                running_confidence = min(running_confidence, 0.55)
+                running_confidence = round(running_confidence, 3)
+
         intent_priority = ["neutral", "academic", "loneliness", "anger", "stress", "sadness", "anxiety", "suicidal"]
         prev_priority = intent_priority.index(previous_intent) if previous_intent in intent_priority else 0
         curr_priority = intent_priority.index(intent) if intent in intent_priority else 0

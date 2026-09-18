@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GAIDA - Training Data Label Audit</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; margin: 20px 28px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; border-bottom: 1px solid #999; padding-bottom: 3px; }
+  p, li { font-size: 12px; line-height: 1.5; }
+  .muted { color: #555; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #bbb; padding: 4px 6px; vertical-align: middle; }
+  th { background: #eee; font-weight: bold; text-align: left; }
+  tr { page-break-inside: avoid; }
+  .num { width: 30px; text-align: center; }
+  .msg { width: 46%; }
+  .cur { width: 12%; text-align: center; font-weight: bold; }
+  .opt { width: 14%; text-align: center; }
+  .fix { width: 22%; }
+  .sig { margin-top: 28px; font-size: 12px; }
+  .sig td { border: none; padding: 10px 0; }
+  @media print {
+    body { margin: 10mm; }
+    thead { display: table-header-group; }
+  }
+</style>
+</head>
+<body>
+
+<h1>GAIDA - Training Data Label Audit</h1>
+<p class="muted">AI-based Anxiety Detection System &middot; College Guidance &middot; University of the East</p>
+
+<p><b>Purpose.</b> GAIDA's model is trained on student-like messages that our team labeled across
+5 categories. We ask a licensed mental health professional to AUDIT the correctness of these labels:
+for each message, our current label is shown. Please check <b>Agree</b> if the label is correct, or
+write the corrected label in the last column if it is not.</p>
+
+<p><b>Time required:</b> approximately 10&ndash;15 minutes.</p>
+
+<h2>Label Definitions (with examples)</h2>
+<ul>
+  <li><b>anxiety</b> &mdash; nervousness, worry, tension, dread, panic-like feelings, overthinking.</li>
+  <li><b>sadness</b> &mdash; low mood, grief, loneliness, emptiness, crying.</li>
+  <li><b>neutral</b> &mdash; casual or everyday statements with no significant distress.</li>
+  <li><b>suicidal</b> &mdash; death wishes, wanting to end one&rsquo;s life, self-harm &mdash; even when phrased indirectly.</li>
+  <li><b>anger</b> &mdash; irritation, frustration, hostility.</li>
+</ul>
+
+<h2>Audit Sheet</h2>
+<table>
+  <thead>
+    <tr>
+      <th class="num">#</th>
+      <th class="msg">Student Message (from our training data)</th>
+      <th class="cur">Current Label</th>
+      <th class="opt">Agree &radic;</th>
+      <th class="fix">If NOT agree, corrected label:</th>
+    </tr>
+  </thead>
+  <tbody>
+<tr><td class="num">1</td><td>Kung pwede lang mawala na ako</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">2</td><td>Wala na kong dahilan para magpatuloy</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">3</td><td>lagi akong nag-iisip ng kamatayan</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">4</td><td>not yet im scared</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">5</td><td>Wala akong break sa schedule</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">6</td><td>Sana mawala na lahat ng sakit permanently</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">7</td><td>I am so irritated today</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">8</td><td>this is so unfair</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">9</td><td>I feel disrespected</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">10</td><td>I feel like Im going to fail this semester</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">11</td><td>okay lang ako</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">12</td><td>natapos ko na ang project ko</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">13</td><td>Parang hindi ako mahal ng kahit sino</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">14</td><td>wala nang saysay mabuhay</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">15</td><td>Im so angry right now</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">16</td><td>Grabe yung academic pressure</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">17</td><td>Parang ako lang mag isa palagi</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">18</td><td>gusto ko na sumigaw</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">19</td><td>Hindi ko alam kung nagugustuhan niya ako</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">20</td><td>good afternoon</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">21</td><td>walang respeto sa akin</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">22</td><td>Sabog na utak ko sa dami ng tasks</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">23</td><td>Parang walang nagtitingin sakin</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">24</td><td>who are you</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">25</td><td>I feel like the world would be better without me</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">26</td><td>I want to give up because nothing is fair</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">27</td><td>I don&#x27;t know why I keep trying anymore</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">28</td><td>i wanna kill myself</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">29</td><td>my anxiety is getting worse</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">30</td><td>Ang hirap maging masaya</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">31</td><td>I feel invisible</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">32</td><td>nilalayuan nila ako</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">33</td><td>that i might ruin our friendship. Becuase her friend and also a friend of mine likes me</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">34</td><td>kung mawala ako okay lang</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">35</td><td>I feel overwhelmed by responsibilities</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">36</td><td>I miss the person I used to be</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">37</td><td>sobrang ayaw ko na mag aral</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">38</td><td>are you clinically approved or what?</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">39</td><td>I feel abandoned by everyone</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">40</td><td>Im pissed off</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">41</td><td>Checking lang kung active ka</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">42</td><td>Gusto ko lang mag explore</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">43</td><td>I feel relieved</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">44</td><td>people keep disrespecting me</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">45</td><td>pinagsamantalahan nila ako</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">46</td><td>bakit palaging mali ang ginagawa nila</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">47</td><td>I feel like everyone would be better off without me</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">48</td><td>ang hirap maging estudyante</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">49</td><td>Okay naman lahat sa school</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">50</td><td>I feel so dumb in class</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">51</td><td>Sunod sunod yung tasks ko today</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">52</td><td>I think about death a lot</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">53</td><td>walang nakakakita ng sakit ko</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">54</td><td>ayoko na mabuhay</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">55</td><td>Parang ang dilim ng lahat</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">56</td><td>Gusto ko lang mag type dito</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">57</td><td>Parang gusto ko na mag give up sa life</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">58</td><td>Sobrang lungkot ko ngayon</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">59</td><td>nakakainis talaga</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">60</td><td>my professor failed me</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">61</td><td>parang wala akong natututunan</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">62</td><td>Lagi akong kulang sa tulog</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">63</td><td>I always eat lunch alone</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">64</td><td>grabe ang galit ko dito</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">65</td><td>I can&#x27;t go on like this</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">66</td><td>parang walang nagmamalasakit sa akin</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">67</td><td>May random thought lang ako</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">68</td><td>kulang na kulang ang tulog ko</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">69</td><td>pinagtataksilan ako</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">70</td><td>im gonna go kill myself</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">71</td><td>I feel so nervous I cant think straight</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">72</td><td>Kung mawala ako okay lang</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">73</td><td>I feel like a ghost nobody notices</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">74</td><td>I hate everything</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">75</td><td>I don&#x27;t know if she&#x27;s just being friendly or something more</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">76</td><td>walang problema</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">77</td><td>matagal na akong nalulungkot</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">78</td><td>this situation makes me so angry</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">79</td><td>everything is fine</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">80</td><td>feeling better now</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">81</td><td>im taking that as an option. Thank you ill do it right now</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">82</td><td>Walang nakakaintindi sakin</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">83</td><td>Parang gusto ko na tapusin lahat</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">84</td><td>sinulat ko na ang huling liham ko</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">85</td><td>Nag check in lang ako</td><td class="cur">neutral</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">86</td><td>nakakainis ka</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">87</td><td>I feel so mad I cant think</td><td class="cur">anger</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">88</td><td>hindi ko alam kung may dahilan pa para magpatuloy</td><td class="cur">suicidal</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">89</td><td>Wala na akong gana sa buhay</td><td class="cur">sadness</td><td class="opt"></td><td class="fix"></td></tr><tr><td class="num">90</td><td>Pressure sa family at school</td><td class="cur">anxiety</td><td class="opt"></td><td class="fix"></td></tr>
+  </tbody>
+</table>
+
+<table class="sig">
+  <tr>
+    <td><b>Counselor Name:</b> ______________________________</td>
+    <td><b>Date:</b> ___________________</td>
+  </tr>
+  <tr>
+    <td><b>Signature:</b> ___________________________________</td>
+    <td><b>List name (A or B):</b> ________</td>
+  </tr>
+</table>
+
+<p class="muted">For research use only. Responses will be compared anonymously to measure agreement with
+the team's annotations.</p>
+
+</body>
+</html>

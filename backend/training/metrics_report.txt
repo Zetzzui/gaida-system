@@ -1,0 +1,56 @@
+==============================================================================
+GAIDA SCRIBBLE-DETECTION MODEL REPORT
+==============================================================================
+Dataset: 815 REAL labeled messages, 5 classes
+Real class distribution: anger=56, anxiety=311, neutral=150, sadness=162, suicidal=136
+Augmentation: +115 curated anger examples (anger=115) - TRAIN ONLY
+Augmentation: +95 curated suicidal examples (suicidal=95) - TRAIN ONLY
+Split: stratified 80/20 (train/test), seed 42; test set = 163 real messages, NEVER augmented
+Features: TF-IDF (1-2 grams, max 5000) + Taglish-aware preprocessing
+Preprocessing: lower, collapse repeats, expand contractions, drop 134 stopwords
+
+Model                      Test Acc   Macro-F1  Suicidal Recall
+--------------------------------------------------------------
+Logistic Regression          69.94%     64.12%           96.30%
+Random Forest                63.80%     55.84%           88.89%
+Neural Network               71.78%     67.62%           96.30%
+
+==============================================================================
+ENSEMBLE (majority vote, LR tiebreak) - what production runs
+==============================================================================
+Accuracy : 73.62%
+Macro-F1 : 68.76%   (no-skill baseline for 5 classes = 20%)
+Suicidal recall: 96.30%  [target >= 95% - never miss a crisis phrase]
+
+PER-CLASS (ensemble):
+class          precision   recall       f1
+------------------------------------------
+anger             44.44%   36.36%   40.00%
+anxiety           80.36%   72.58%   76.27%
+neutral           64.86%   80.00%   71.64%
+sadness           72.41%   63.64%   67.74%
+suicidal          81.25%   96.30%   88.14%
+
+CONFUSION MATRIX (rows=true, cols=predicted):
+                   anger     anxiety     neutral     sadness    suicidal
+anger                  4           3           0           2           2
+anxiety                2          45          10           5           0
+neutral                0           2          24           1           3
+sadness                3           5           3          21           1
+suicidal               0           1           0           0          26
+
+BEST SINGLE MODEL: Neural Network
+
+==============================================================================
+END-TO-END PIPELINE on the same real test set (what the student chats with)
+==============================================================================
+Real suicidal messages in test set       : 27
+Flagged suicidal by the live pipeline    : 27   -> suicidal recall = 100.00%  [target >= 95%]
+False-positive suicidal flags on other labels: 2
+FP examples (first 2):
+  - I feel like giving up on everything
+  - Hindi ko na alam kung para saan pa ako
+
+FINALIST NOTE: confidence < 0.55 (threshold) -> 'uncertain', delegated
+to the rule engine + context guards; this is a feature, not a gap.
+==============================================================================

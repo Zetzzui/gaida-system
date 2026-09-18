@@ -1,0 +1,121 @@
+﻿sample_id,text,gold_label
+1,"mamaya na ako matutulog, may gagawin pa",neutral
+2,"sobrang inis ko sa ginawa niyo",anger
+3,"don't test me right now, I am really angry",anger
+4,"I'm going to end my life, please forgive me",suicidal
+5,"nakakaasar ka at nakakainis yang ugali mo",anger
+6,"I can't stop worrying about what might happen tomorrow",anxiety
+7,"I am furious and I want them to know it",anger
+8,"I am seriously mad and I don't care who knows it",anger
+9,"I want to end my life tonight",suicidal
+10,"I swallowed some pills because I give up",suicidal
+11,"hindi ako makatulog sa kaba sa quiz bukas",anxiety
+12,"putang ina, ang tagal niyong mag-reply",anger
+13,"gustong-gusto kong itapon lahat dahil sobrang galit ako",anger
+14,"my palms are sweating and my mind is racing right now",anxiety
+15,"good morning, ang sarap ng tulog ko",neutral
+16,"ang sakit na lagi na lang akong naiwan",sadness
+17,"I'm fuming mad and I can't even explain it",anger
+18,"gusto ko nang mamatay",suicidal
+19,"I feel so alone in this world",sadness
+20,"hindi na ako masaya kahit sa anong gawin ko",sadness
+21,"I bought new shoes today and I like them",neutral
+22,"I feel empty inside, like nothing matters anymore",sadness
+23,"I have already planned how to end my life",suicidal
+24,"tapos ko na lahat ng dapat kong gawin, hihinto na ako",suicidal
+25,"Gumising ako ng maaga at nag-ayos ng kama",neutral
+26,"May klase ako sa alas-diyes mamaya",neutral
+27,"I'm so angry my blood is boiling",anger
+28,"ang lungkot ng araw ko, wala akong makausap",sadness
+29,"I keep overthinking every little thing until I can't sleep",anxiety
+30,"I want to punch someone right now",anger
+31,"The weather is nice today",neutral
+32,"parang ang bigat at walang laman ang dibdib ko",sadness
+33,"nahihilo na ako sa kakaisip",anxiety
+34,"walang nakakaintindi sa nararamdaman ko",sadness
+35,"paulit-ulit kong inaalala ang masasakit na alaala",sadness
+36,"ang daming nasa isip ko, sabog na sabog na ako",anxiety
+37,"I feel unwanted and excluded everywhere I go",sadness
+38,"I feel a lump in my throat every time I think about it",anxiety
+39,"nawalan na ako ng gana sa mga dati kong hilig",sadness
+40,"I can't stop my heart from pounding, it's scaring me",anxiety
+41,"I just want to be alone because I feel so down",sadness
+42,"I feel like nobody loves me",sadness
+43,"nakakainis na nakakainis ka, gusto kitang harapin",anger
+44,"May concert daw sa November, excited ako",neutral
+45,"I feel so sad that I can't even eat properly",sadness
+46,"I miss them so much it hurts to breathe",sadness
+47,"I'm just taking a break from studying",neutral
+48,"I keep imagining the worst happening over and over",anxiety
+49,"hindi ko na kaya, magpapakamatay na ako",suicidal
+50,"I want to die so the pain stops forever",suicidal
+51,"my heart is racing and I can't calm down",anxiety
+52,"I'm scrolling through social media",neutral
+53,"umiiyak ako mag-isa sa kwarto",sadness
+54,"ang init ng ulo ko, ayoko munang kausapin kahit sino",anger
+55,"Umuulan ngayon, dala ko ang payong ko",neutral
+56,"I've been crying all day and I can't stop",sadness
+57,"I'm ready to die tonight",suicidal
+58,"I feel panicky and I don't know why",anxiety
+59,"I'm just watching Netflix right now",neutral
+60,"maghihigpit lang ako ng tali ngayong gabi",suicidal
+61,"nagngangalit ako ngayon, para akong sasabog",anger
+62,"I am so pissed off right now, I could break something",anger
+63,"I'm terrified I'll fail everything and I can't turn my mind off",anxiety
+64,"I keep getting a knot in my stomach from worrying",anxiety
+65,"nanginginig ang kamay ko sa kaba",anxiety
+66,"My friends and I played basketball yesterday",neutral
+67,"bwisit na bwisit na talaga ako",anger
+68,"Nilinis ko ang kwarto ko kanina",neutral
+69,"malungkot na malungkot na talaga ako araw-araw",sadness
+70,"kakain na ako kasi gutom na ako",neutral
+71,"paulit-ulit kong iniisip ang mga pangyayari at di ako kumalma",anxiety
+72,"I'm worried sick about my health and I can't stop checking it",anxiety
+73,"hanggang ngayon kinakabahan pa rin ako sa nangyari",anxiety
+74,"I'm doing my homework right now",neutral
+75,"sobrang lungkot ko ngayon, gusto kong umiyak",sadness
+76,"wala na akong rason para mabuhay",suicidal
+77,"I already bought what I need to end myself",suicidal
+78,"tinitignan ko na ang pinakamataas na building dito para tumalon",suicidal
+79,"I'm going to take all these pills tonight",suicidal
+80,"I finished my project earlier than expected",neutral
+81,"I could actually scream at the top of my lungs",anger
+82,"pinagpapawisan ako kahit hindi naman mainit, ang kaba ko",anxiety
+83,"I am about to end my life, goodbye",suicidal
+84,"Nagtext ako sa kaibigan ko kagabi",neutral
+85,"I ate lunch with my classmates today",neutral
+86,"wala nang pag-asa, mamamatay na lang ako",suicidal
+87,"I don't want to wake up anymore",suicidal
+88,"it hurts so much and I don't know how to move on",sadness
+89,"sa gabing ito, aalis na ako sa mundo",suicidal
+90,"I lost my best friend and I just feel empty",sadness
+91,"I've been thinking of jumping off the bridge",suicidal
+92,"I'm raging right now, stay away from me",anger
+93,"nararamdaman kong umaapaw ang galit ko",anger
+94,"I feel like I'm about to explode in anger",anger
+95,"sobrang kaba ko, para akong masusuka sa exam",anxiety
+96,"I feel rejected and heartbroken right now",sadness
+97,"I've already written my goodbye letters",suicidal
+98,"galit na galit ako at gusto kong sumigaw",anger
+99,"parang wala nang kulay ang mundo ko",sadness
+100,"parang nasasakal ako sa kaba",anxiety
+101,"hindi ako makahinga sa sobrang pag-aalala ko",anxiety
+102,"Gumuho na lahat, gusto ko nang tapusin ang lahat",suicidal
+103,"Ayoko na, lulunukin ko lahat ng gamot",suicidal
+104,"I passed my math exam",neutral
+105,"wala akong lakas gawin ang kahit ano, lungkot lang",sadness
+106,"I hate you, don't ever talk to me again",anger
+107,"Napanood ko na ang movie na sinabi mo",neutral
+108,"I feel like I'm carrying all this sadness alone",sadness
+109,"hindi na ako magtatagal sa mundong to",suicidal
+110,"nakakagalit talaga ang mga ginagawa nila, walang hiya",anger
+111,"Naalala ko lang na may meeting tayo bukas",neutral
+112,"I've decided, wala nang makakapigil sa akin",suicidal
+113,"I'm looking forward to the upcoming holiday",neutral
+114,"I'm so nervous I feel like I'm shaking",anxiety
+115,"hindi ko mapigilan ang takot na nararamdaman ko",anxiety
+116,"parang may nagbagsak ng dingding sa dibdib ko sa sobrang kaba",anxiety
+117,"sakit sa ulo ang mga ginagawa nila, nabuwisit ako",anger
+118,"chill lang ang weekend ko",neutral
+119,"I'll go to the mall this weekend",neutral
+120,"grabe ang inis ko, kalmado lang ang iba",anger

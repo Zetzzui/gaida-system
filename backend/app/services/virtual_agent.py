@@ -85,6 +85,16 @@ SAFE_PHRASES = [
     "i don't want to go to class",
     "ayoko na lumabas",
     "ayoko na kumain",
+    "ayoko na sa mga tao",
+    "goodbye",
+    "good bye",
+    "checking lang",
+    "testing lang",
+    "test lang",
+    "kung active ka",
+    "active ka ba",
+    "active kaba",
+    "pasensya na nag check lang",
 ]
 
 def _is_safe_phrase(text: str) -> bool:
@@ -149,6 +159,14 @@ KEYWORDS = {
         ("wala na akong dahilan", 3.0),
         ("gusto ko nang mawala sa mundo", 3.5),
         ("gusto ko nang mawala sa lahat", 3.5),
+        ("papatayin ko na ang sarili ko", 3.5),
+        ("papatayin ko ang sarili ko", 3.5),
+        ("patayin ko na ang sarili ko", 3.5),
+        ("patayin ko ang sarili ko", 3.5),
+        ("nag isip ng kamatayan", 3.5),
+        ("nag iisip ng kamatayan", 3.5),
+        ("nagiisip ng kamatayan", 3.5),
+        ("iniisip ko ang kamatayan", 3.5),
 
         # Indirect Filipino
         ("bakit pa mabuhay", 4.0),
@@ -162,6 +180,10 @@ KEYWORDS = {
         ("bakit pa ako nagtatagal", 3.5),
         ("wala nang dahilan magpatuloy", 4.0),
         ("hindi ko alam kung may dahilan pa", 3.5),
+        ("huling liham", 4.0),
+        ("nagpaalam na ako", 3.5),
+        ("wish i was never born", 3.5),
+        ("never born", 3.0),
     ],
 }
 
