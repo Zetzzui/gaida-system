@@ -4,6 +4,11 @@ const GIS_SRC = 'https://accounts.google.com/gsi/client';
 
 export default function GoogleSignIn({ clientId, onCredential, text = 'continue_with' }) {
   const buttonRef = useRef(null);
+  const onCredentialRef = useRef(onCredential);
+
+  useEffect(() => {
+    onCredentialRef.current = onCredential;
+  });
 
   useEffect(() => {
     if (!clientId || !buttonRef.current) return undefined;
@@ -16,7 +21,7 @@ export default function GoogleSignIn({ clientId, onCredential, text = 'continue_
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: (response) => {
-          if (response?.credential) onCredential(response.credential);
+          if (response?.credential) onCredentialRef.current(response.credential);
         },
       });
       window.google.accounts.id.renderButton(buttonRef.current, {
@@ -24,7 +29,6 @@ export default function GoogleSignIn({ clientId, onCredential, text = 'continue_
         size: 'large',
         shape: 'rectangular',
         text,
-        width: '100%',
         logo_alignment: 'left',
       });
     };
@@ -44,7 +48,7 @@ export default function GoogleSignIn({ clientId, onCredential, text = 'continue_
     return () => {
       if (window.google?.accounts) window.google.accounts.id.cancel();
     };
-  }, [clientId, onCredential, text]);
+  }, [clientId, text]);
 
   if (!clientId) {
     return (
