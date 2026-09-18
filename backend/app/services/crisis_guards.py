@@ -31,6 +31,7 @@ SOFT_VENTING_PHRASES = {
     "make it all stop",
     "ayoko na ng lahat",
     "ayoko na sa lahat",
+    "nagpaalam na ako",
 }
 
 _APOS_TRANSLATE = str.maketrans({"’": "'", "‘": "'"})

@@ -34,6 +34,7 @@ from sklearn.metrics import (
 
 from app.services import ml_classifier as mc
 from app.services.text_prep import preprocess
+from app.services.virtual_agent import detect_intent_and_level
 
 REPORT_PATH = Path(__file__).resolve().parent / "metrics_report.txt"
 SEED = 42
@@ -83,6 +84,7 @@ def _evaluate(y_true, y_pred, labels):
 def main():
     texts, labels = mc.load_dataset()
     aug_texts, aug_labels = mc.load_anger_augmentation()
+    sui_texts, sui_labels = mc.load_suicidal_augmentation()
     classes = dict(Counter(labels))
     class_names = sorted(classes)
 
@@ -111,6 +113,10 @@ def main():
         aug_counts = Counter(aug_labels)
         out(f"Augmentation: +{len(aug_texts)} curated anger examples "
             f"({', '.join(f'{k}={v}' for k, v in sorted(aug_counts.items()))}) - TRAIN ONLY")
+    if sui_texts:
+        sui_counts = Counter(sui_labels)
+        out(f"Augmentation: +{len(sui_texts)} curated suicidal examples "
+            f"({', '.join(f'{k}={v}' for k, v in sorted(sui_counts.items()))}) - TRAIN ONLY")
     out(f"Split: stratified 80/20 (train/test), seed {SEED}; "
         f"test set = {len(X_test)} real messages, NEVER augmented")
     out(f"Features: TF-IDF (1-2 grams, max 5000) + Taglish-aware preprocessing")
@@ -159,6 +165,35 @@ def main():
 
     out("BEST SINGLE MODEL: " + max(per_model, key=lambda n: per_model[n][1]))
     out("")
+
+    # End-to-end: full detection pipeline (keywords -> safe phrases -> ML -> rules)
+    out("=" * 78)
+    out("END-TO-END PIPELINE on the same real test set (what the student chats with)")
+    out("=" * 78)
+    total_sui = sum(1 for y in y_test if y == "suicidal")
+    e2e_caught = 0
+    e2e_fp = 0
+    e2e_fp_examples = []
+    for t, y in zip(X_test, y_test):
+        verdict = detect_intent_and_level(t)
+        if verdict["intent"] == "suicidal":
+            if y == "suicidal":
+                e2e_caught += 1
+            else:
+                e2e_fp += 1
+                if len(e2e_fp_examples) < 8:
+                    e2e_fp_examples.append(t)
+    e2e_recall = (e2e_caught / total_sui) if total_sui else 0.0
+    out(f"Real suicidal messages in test set       : {total_sui}")
+    out(f"Flagged suicidal by the live pipeline    : {e2e_caught}"
+        f"   -> suicidal recall = {_fmt_pct(e2e_recall)}  [target >= 95%]")
+    out(f"False-positive suicidal flags on other labels: {e2e_fp}")
+    if e2e_fp_examples:
+        out("FP examples (first " + str(len(e2e_fp_examples)) + "):")
+        for ex in e2e_fp_examples:
+            out("  - " + ex[:70])
+    out("")
+
     out("FINALIST NOTE: confidence < 0.55 (threshold) -> 'uncertain', delegated")
     out("to the rule engine + context guards; this is a feature, not a gap.")
     out("=" * 78)

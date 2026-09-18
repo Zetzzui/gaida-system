@@ -35,6 +35,7 @@ from app.services.text_prep import STOPWORDS, preprocess
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TRAINING_DATA = BASE_DIR / "training" / "anxiety_training.jsonl"
 AUGMENTATION_FILE = BASE_DIR / "training" / "anger_augmentation.jsonl"
+SUICIDAL_AUGMENTATION_FILE = BASE_DIR / "training" / "suicidal_augmentation.jsonl"
 MODEL_DIR = BASE_DIR / "training" / "models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -67,6 +68,20 @@ def load_anger_augmentation():
     if not AUGMENTATION_FILE.exists():
         return [], []
     with open(AUGMENTATION_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                data.append(json.loads(line))
+    texts = [d["text"] for d in data]
+    labels = [d["label"] for d in data]
+    return texts, labels
+
+
+def load_suicidal_augmentation():
+    data = []
+    if not SUICIDAL_AUGMENTATION_FILE.exists():
+        return [], []
+    with open(SUICIDAL_AUGMENTATION_FILE, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -123,6 +138,7 @@ def train_and_compare():
     print("Loading dataset...")
     texts, labels = load_dataset()
     aug_texts, aug_labels = load_anger_augmentation()
+    sui_texts, sui_labels = load_suicidal_augmentation()
     print(f"Real examples: {len(texts)}")
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -134,6 +150,12 @@ def train_and_compare():
               f"(test set = real 163 messages, untouched)")
         X_train = X_train + aug_texts
         y_train = y_train + aug_labels
+    if sui_texts:
+        n_aug = len(sui_texts)
+        print(f"Adding {n_aug} curated suicidal examples to TRAIN ONLY "
+              f"(test set = real 163 messages, untouched)")
+        X_train = X_train + sui_texts
+        y_train = y_train + sui_labels
 
     pipelines = build_pipelines()
     results = {}
