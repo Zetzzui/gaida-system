@@ -5,3 +5,11 @@ channel = "stable-25_05"
 
 [agent]
 expertMode = true
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+[deployment]
+run = ["sh", "-c", "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+deploymentTarget = "cloudrun"
