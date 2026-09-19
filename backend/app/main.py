@@ -29,6 +29,7 @@ from app.api import auth
 from app.api.voice import router as audio_router
 from app.api.counselor import router as counselor_router
 from app.api.session import router as session_router
+from app.api.research import router as research_router
 
 app = FastAPI(title="GAIDA Backend")
 
@@ -62,6 +63,7 @@ app.include_router(auth.router)
 app.include_router(audio_router)
 app.include_router(counselor_router)
 app.include_router(session_router)
+app.include_router(research_router)
 
 # ----------------------------
 # CORS

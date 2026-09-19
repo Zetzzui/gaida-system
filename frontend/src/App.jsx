@@ -9,6 +9,7 @@ import StudentDashboard from './features/student/StudentDashboard'
 import CounselorDashboard from './features/counselor/CounselorDashboard'
 import ForgotPassword from './features/auth/ForgotPassword'
 import PWABanner from './components/PWABanner'
+import ResearchFlow from './features/research/ResearchFlow'
 
 // ─────────────────────────────────────────────────────────────
 // When a queued message finally gets a real GPT response after
@@ -42,6 +43,7 @@ function App() {
         <Route path="/consent"             element={<InformedConsent />} />
         <Route path="/student-dashboard"   element={<StudentDashboard />} />
         <Route path="/counselor-dashboard" element={<CounselorDashboard />} />
+        <Route path="/research"            element={<ResearchFlow />} />
       </Routes>
 
     </BrowserRouter>

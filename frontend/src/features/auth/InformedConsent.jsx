@@ -65,7 +65,7 @@ const handleAccept = async (e) => {
         <div className="flex justify-between items-start mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Informed Consent</h1>
           <div className="text-right">
-            <p className="text-sm text-gray-600">User: <span className="font-medium">Juan Dela Cruz</span></p>
+            <p className="text-sm text-gray-600">User: <span className="font-medium">{localStorage.getItem('student_id') || 'Student'}</span></p>
           </div>
         </div>
 
@@ -86,10 +86,13 @@ const handleAccept = async (e) => {
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Data Collection:</h3>
               <p>
-                We will collect your voice recordings, text messages, interaction patterns, and behavioral data 
-                during counseling sessions. All data is linked to your student ID for session tracking and 
-                counselor review. Data collected includes but is not limited to: audio recordings of conversations, 
-                text input, response times, interaction frequency, and detected emotional indicators.
+                We will collect your text messages, interaction patterns, and behavioral
+                data during counseling sessions. All data is linked to your student ID for
+                session tracking and counselor review. Data collected includes but is not
+                limited to: text input, response times, interaction frequency, and detected
+                emotional indicators. If you use voice input, your speech is analyzed for
+                acoustic patterns (such as pitch and pacing) and transcribed to text in
+                real time; the audio recording itself is not stored after this processing.
               </p>
             </div>
 
@@ -97,11 +100,13 @@ const handleAccept = async (e) => {
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Privacy:</h3>
               <p>
-                All data is encrypted and stored securely using Supabase cloud infrastructure and university-approved systems. 
-                Only authorized counselors and administrators can access flagged sessions. 
-                Your data will not be shared with third parties without your explicit consent, 
-                except as required by law or in cases of imminent danger to yourself or others.
-
+                Your data is stored using Supabase cloud infrastructure. At this stage of
+                the system's development, access controls and encryption-at-rest for this
+                data are still being implemented, so please avoid sharing information you
+                would consider highly sensitive (such as account numbers or passwords).
+                Your data will not be shared with third parties without your explicit
+                consent, except as required by law or in cases of imminent danger to
+                yourself or others.
               </p>
             </div>
 
@@ -120,9 +125,11 @@ const handleAccept = async (e) => {
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Session Recording:</h3>
               <p>
-                By accepting, you consent to audio, text, and interaction data recording during your session. 
-                Recordings may be reviewed by authorized counselors for assessment and support purposes. You 
-                will be notified when recording begins.
+                By accepting, you consent to text and interaction data being recorded during
+                your session, and to voice input being analyzed and transcribed in real time
+                if you choose to use it (the audio itself is not retained). This data may be
+                reviewed by the research team and by authorized counselors for assessment
+                and support purposes.
               </p>
             </div>
 
