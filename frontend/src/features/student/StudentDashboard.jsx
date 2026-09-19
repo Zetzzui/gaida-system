@@ -433,8 +433,8 @@ export default function StudentDashboard() {
     confirmEndSession();
   };
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (textOverride) => {
+    const text = (textOverride ?? input).trim();
     if (!text || sending) return;
 
     clearTimeout(typingTimeout.current);
@@ -1010,7 +1010,7 @@ export default function StudentDashboard() {
             <div className="flex items-center gap-1.5 flex-shrink-0 pb-0.5">
               <VoiceInput
                 sessionId={localStorage.getItem('session_id')}
-                onTranscript={(text) => setInput(text)}
+                onTranscript={(text) => { setInput(text); sendMessage(text); }}
                 onStatusChange={setVoiceStatus}
               />
               <button

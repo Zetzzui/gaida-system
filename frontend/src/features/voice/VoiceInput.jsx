@@ -20,6 +20,7 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
   const finalTranscriptRef = useRef("");
   const streamRef = useRef(null);
   const audioRef = useRef(null);  // audio element for playback
+  const sentRef = useRef(false);  // whether a transcript was already sent for this recording
 
   const pushStatus = (text) => onStatusChange?.(text);
 
@@ -49,6 +50,7 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
     setRecording(false);
     setLiveTranscript("");
     finalTranscriptRef.current = "";
+    sentRef.current = false;
     pushStatus("");
     setError(null);
     // Clear playback
@@ -58,19 +60,25 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
     setPlaying(false);
   };
 
-  // ── Confirm — stop recording, send audio to backend ──────────────────────
+  // ── Confirm — send immediately, process audio in the background ──────────
   const handleConfirm = () => {
     try { recognitionRef.current?.stop(); } catch (e) { void e; }
 
-    if (mediaRecorderRef.current?.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    } else {
-      const text = finalTranscriptRef.current.trim() || liveTranscript.trim();
-      if (text) onTranscript?.(text);
-      else setError("No speech detected. Try again.");
+    const text = finalTranscriptRef.current.trim() || liveTranscript.trim();
+    if (text) {
+      sentRef.current = true;
       setRecording(false);
       setLiveTranscript("");
       finalTranscriptRef.current = "";
+      pushStatus("");
+      onTranscript?.(text);
+    }
+
+    if (mediaRecorderRef.current?.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    } else if (!text) {
+      setError("No speech detected. Try again.");
+      setRecording(false);
       pushStatus("");
     }
   };
@@ -80,6 +88,7 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
     setError(null);
     setLiveTranscript("");
     finalTranscriptRef.current = "";
+    sentRef.current = false;
     chunksRef.current = [];
     // Clear previous playback when starting new recording
     if (audioRef.current) audioRef.current.pause();
@@ -186,16 +195,17 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
       setLiveTranscript("");
       finalTranscriptRef.current = "";
 
-      // Put transcript in input box — playback bar shown separately
-      onTranscript?.(data.transcript);
+      if (!sentRef.current) onTranscript?.(data.transcript);
 
     } catch (err) {
       setError(err.message);
       pushStatus("");
       setRecording(false);
 
-      const fallback = finalTranscriptRef.current.trim() || liveTranscript.trim();
-      if (fallback) onTranscript?.(fallback);
+      if (!sentRef.current) {
+        const fallback = finalTranscriptRef.current.trim() || liveTranscript.trim();
+        if (fallback) onTranscript?.(fallback);
+      }
     } finally {
       setLoading(false);
     }
@@ -316,7 +326,7 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
 
           <button
             onClick={handleConfirm}
-            title="Done — analyze voice and review transcript"
+            title="Done — analyze voice and send"
             className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center bg-emerald-700 hover:bg-emerald-600 transition-all duration-200 flex-shrink-0"
           >
             <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

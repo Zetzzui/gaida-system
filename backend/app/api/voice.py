@@ -1,6 +1,8 @@
+import asyncio
 import tempfile
 import os
 import traceback
+from openai import OpenAI
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form
 from fastapi.responses import Response
 from app.utils.auth import get_current_user
@@ -15,35 +17,16 @@ from app.services.session_manager import get_session, start_session
 
 router = APIRouter(prefix="/audio", tags=["audio"])
 
-# ── Lazy load Whisper — loads on first voice request, not at startup ──
-_whisper_model = None
+# ── Hosted transcription (OpenAI) — no local model, runs on fast GPUs ──
+_STT_MODEL = os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe")
+_openai_client = None
 
 
-def _ensure_ffmpeg_on_path():
-    """Whisper shells out to the `ffmpeg` command. If it isn't on the system,
-    expose the bundled static ffmpeg from imageio-ffmpeg through PATH so
-    transcription works on hosts with no apt (e.g. Render)."""
-    import shutil
-    if shutil.which("ffmpeg"):
-        return
-    try:
-        import imageio_ffmpeg
-        exe = imageio_ffmpeg.get_ffmpeg_exe()
-        _dir = os.path.dirname(exe)
-        os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
-    except Exception:
-        pass
-
-
-def _get_whisper_model():
-    global _whisper_model
-    if _whisper_model is None:
-        _ensure_ffmpeg_on_path()
-        import whisper
-        print("[GAIDA] Loading Whisper model (first voice request)...")
-        _whisper_model = whisper.load_model("medium")
-        print("[GAIDA] Whisper model loaded.")
-    return _whisper_model
+def _get_voice_client():
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 @router.post("/speech-to-text")
 async def speech_to_text(
@@ -116,8 +99,8 @@ async def speech_to_text(
             }
             print(f"DEBUG: Acoustic features saved to session {session_id}")
 
-        # --- Step 3: Whisper transcription ---
-        # Always use .webm suffix so Whisper/ffmpeg handles it correctly
+        # --- Step 3: Transcription (hosted OpenAI) ---
+        # .webm suffix so the API's ffmpeg decodes any browser format safely
         suffix = ".webm"
         tmp_path = None
 
@@ -127,9 +110,14 @@ async def speech_to_text(
                 tmp_path = tmp.name
             print(f"DEBUG: Temp file created: {tmp_path}")
 
-            print(f"DEBUG: Starting Whisper transcription...")
-            result = _get_whisper_model().transcribe(tmp_path)
-            transcript = result.get("text", "").strip()
+            print(f"DEBUG: Starting transcription ({_STT_MODEL})...")
+            with open(tmp_path, "rb") as f:
+                result = await asyncio.to_thread(
+                    _get_voice_client().audio.transcriptions.create,
+                    model=_STT_MODEL,
+                    file=("audio.webm", f),
+                )
+            transcript = getattr(result, "text", "").strip()
             print(f"DEBUG: Transcription complete: '{transcript}'")
 
         except Exception as e:
