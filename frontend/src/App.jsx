@@ -11,6 +11,7 @@ import ForgotPassword from './features/auth/ForgotPassword'
 import PWABanner from './components/PWABanner'
 import ResearchFlow from './features/research/ResearchFlow'
 import ResearchSUS from './features/research/ResearchSUS'
+import Withdraw from './features/research/Withdraw'
 
 // ─────────────────────────────────────────────────────────────
 // When a queued message finally gets a real GPT response after
@@ -46,6 +47,7 @@ function App() {
         <Route path="/counselor-dashboard" element={<CounselorDashboard />} />
         <Route path="/research"            element={<ResearchFlow />} />
         <Route path="/research-sus"        element={<ResearchSUS />} />
+        <Route path="/research/withdraw"   element={<Withdraw />} />
       </Routes>
 
     </BrowserRouter>

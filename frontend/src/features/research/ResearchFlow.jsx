@@ -528,6 +528,12 @@ export default function ResearchFlow() {
             >
               I've saved my code — Continue
             </button>
+            <button
+              onClick={() => navigate('/research/withdraw')}
+              className="w-full mt-3 text-xs text-gray-500 hover:text-gray-300 underline"
+            >
+              Changed your mind? Withdraw and delete your data
+            </button>
           </div>
         )}
       </div>

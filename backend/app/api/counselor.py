@@ -171,6 +171,22 @@ def process_alert(
             except Exception as e:
                 print(f"Supabase alert insert error: {e}")
 
+            # Email the counselor(s) on file — best-effort, never raises, and
+            # only fires for a brand-new alert (not on every update to an
+            # existing one) so an ongoing distressed conversation doesn't
+            # spam the inbox. See app/services/notifications.py.
+            try:
+                from app.services.notifications import send_counselor_alert_email
+
+                send_counselor_alert_email(
+                    session_id=session_id,
+                    severity=severity,
+                    intent=intent,
+                    message=message,
+                )
+            except Exception as e:
+                print(f"[counselor] alert email dispatch failed: {e}")
+
         alert_sent = True
 
     return {

@@ -84,6 +84,12 @@ export default function PortalSelection() {
         </div>
 
         <p className="text-center text-gray-400 text-xs mt-6">University of the East — Guidance &amp; Counseling Office</p>
+        <button
+          onClick={() => navigate('/research/withdraw')}
+          className="block w-full text-center text-gray-300 text-xs mt-2 underline hover:text-red-600"
+        >
+          Withdraw from the research study
+        </button>
       </div>
     </div>
   );
