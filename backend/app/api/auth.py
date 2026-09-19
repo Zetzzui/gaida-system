@@ -33,6 +33,7 @@ class LoginResponse(BaseModel):
     message: str
     student_id: str = None
     session_token: str = None
+    name: str = None
 
 
 class ConsentRequest(BaseModel):
@@ -43,6 +44,14 @@ class ConsentRequest(BaseModel):
 class GoogleLoginRequest(BaseModel):
     credential: str
     role: str = "student"
+
+
+class CounselorLoginRequest(BaseModel):
+    faculty_id: str
+    password: str
+
+
+COUNSELOR_ACCOUNT_ID = "COUNSELOR01"
 
 
 def validate_email_domain(email: str) -> bool:
@@ -128,6 +137,31 @@ def google_login(payload: GoogleLoginRequest):
         message="Login successful",
         student_id=user_id,
         session_token=session_token,
+    )
+
+
+@router.post("/counselor-login", response_model=LoginResponse)
+def counselor_login(payload: CounselorLoginRequest):
+    """
+    Authenticate a guidance counselor. Issues a counselor bearer token that
+    unlocks the /api/counselor/* endpoints (role-gated server-side).
+    """
+    check_rate_limit(payload.faculty_id)
+
+    faculty_id = payload.faculty_id.strip().upper()
+    creds = TEST_CREDENTIALS.get(COUNSELOR_ACCOUNT_ID)
+
+    if faculty_id != COUNSELOR_ACCOUNT_ID or not creds or payload.password != creds.get("access_code"):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    session_token = create_session_token(COUNSELOR_ACCOUNT_ID, role="counselor")
+
+    return LoginResponse(
+        success=True,
+        message="Login successful",
+        student_id=COUNSELOR_ACCOUNT_ID,
+        session_token=session_token,
+        name=creds.get("name"),
     )
 
 

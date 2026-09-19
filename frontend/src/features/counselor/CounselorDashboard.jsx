@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 
 import { BACKEND_URL as BACKEND } from '../../config';
+import apiFetch from '../../api';
 
 // ── Quick response templates ──────────────────────────────────────────────────
 const QUICK_RESPONSES = [
@@ -93,7 +94,7 @@ function OverviewPage({ alerts, sessions }) {
   const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
-    fetch(`${BACKEND}/api/counselor/analytics/overview`)
+    apiFetch(`${BACKEND}/api/counselor/analytics/overview`)
       .then(r => r.json())
       .then(setAnalytics)
       .catch(() => {});
@@ -481,12 +482,12 @@ function ChatModal({ sessionId, onClose }) {
 
   useEffect(() => {
     // get user_id from the session first, then fetch profile
-    fetch(`${BACKEND}/api/counselor/chat/${sessionId}`)
+    apiFetch(`${BACKEND}/api/counselor/chat/${sessionId}`)
       .then(r => r.json())
       .then(data => {
         const userId = data.user_id;
         if (userId) {
-          return fetch(`${BACKEND}/api/counselor/student-profile/${userId}`)
+          return apiFetch(`${BACKEND}/api/counselor/student-profile/${userId}`)
             .then(r => r.json())
             .then(d => setStudentProfile(d.profile));
         }
@@ -503,7 +504,7 @@ function ChatModal({ sessionId, onClose }) {
 
   // Load existing note when modal opens
   useEffect(() => {
-    fetch(`${BACKEND}/api/counselor/session-notes/${sessionId}`)
+    apiFetch(`${BACKEND}/api/counselor/session-notes/${sessionId}`)
       .then(r => r.json())
       .then(data => {
         if (data.notes && data.notes.length > 0) {
@@ -524,7 +525,7 @@ function ChatModal({ sessionId, onClose }) {
 
   const fetchChat = async () => {
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/chat/${sessionId}`);
+      const res = await apiFetch(`${BACKEND}/api/counselor/chat/${sessionId}`);
       const data = await res.json();
       if (data.messages) setMessages(data.messages);
       setStudentTyping(data.student_typing || false);
@@ -534,7 +535,7 @@ function ChatModal({ sessionId, onClose }) {
   };
 
   const fireCounselorTyping = (isTyping) => {
-    fetch(`${BACKEND}/api/counselor/typing/${sessionId}`, {
+    apiFetch(`${BACKEND}/api/counselor/typing/${sessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sender: 'counselor', is_typing: isTyping }),
@@ -571,7 +572,7 @@ const typingThrottleRef = useRef(null);
     setSending(true);
     const counselorData = JSON.parse(localStorage.getItem('counselorData') || '{}');
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/takeover`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/takeover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, message: text, counselor_id: counselorData.id || counselorData.student_number }),
@@ -590,7 +591,7 @@ const typingThrottleRef = useRef(null);
   const handleReturnToGaida = async () => {
     setReturningToGaida(true);
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/return-to-gaida`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/return-to-gaida`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
@@ -613,7 +614,7 @@ const typingThrottleRef = useRef(null);
     setNoteError('');
     setSavingNote(true);
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/session-notes`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/session-notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -658,7 +659,7 @@ const typingThrottleRef = useRef(null);
     if (!window.confirm('Mark this session as resolved? It will be removed from active sessions.')) return;
     setResolving(true);
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/sessions/resolve`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/sessions/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
@@ -676,7 +677,7 @@ const typingThrottleRef = useRef(null);
   const handleExportSession = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/export-session/${sessionId}`);
+      const res = await apiFetch(`${BACKEND}/api/counselor/export-session/${sessionId}`);
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -1135,7 +1136,7 @@ export default function CounselorDashboard() {
 
   const fetchAlerts = async () => {
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/alerts`);
+      const res = await apiFetch(`${BACKEND}/api/counselor/alerts`);
       const data = await res.json();
       if (data.alerts) {
         const newPending = data.alerts.filter(a => a.status === 'pending').length;
@@ -1153,7 +1154,7 @@ export default function CounselorDashboard() {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/sessions/active`);
+      const res = await apiFetch(`${BACKEND}/api/counselor/sessions/active`);
       const data = await res.json();
       if (data.sessions) setSessions(data.sessions);
       setLastUpdated(new Date());
@@ -1162,7 +1163,7 @@ export default function CounselorDashboard() {
 
   const handleUpdateStatus = async (sessionId, status) => {
     try {
-      await fetch(`${BACKEND}/api/counselor/alerts/update`, {
+      await apiFetch(`${BACKEND}/api/counselor/alerts/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, status }),
@@ -1267,7 +1268,7 @@ function ResolvedCasesPage() {
     if (!window.confirm('Remove this case from the list? This can be undone from the database if needed.')) return;
 
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/sessions/delete`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/sessions/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
@@ -1298,7 +1299,7 @@ function ResolvedCasesPage() {
   };
 
   useEffect(() => {
-    fetch(`${BACKEND}/api/counselor/sessions/resolved`)
+    apiFetch(`${BACKEND}/api/counselor/sessions/resolved`)
       .then(r => r.json())
       .then(data => {
         if (data.sessions) setCases(data.sessions);

@@ -1,5 +1,6 @@
 from typing import Dict, Any
 import logging
+import re
 from app.services.session_manager import get_session, start_session, record_interaction
 from app.services.virtual_agent import detect_intent_and_level, _build_result
 from app.services.gpt_agent import generate_response_with_gpt, stream_gpt_response
@@ -36,6 +37,49 @@ URGENT_PHYSICAL_KEYWORDS = [
     "sikip sa puso", "hirap huminga",
     "di makahininga",
 ]
+
+# Instructs GAIDA to hold at High/Crisis until the student explicitly confirms
+# they are safe — otherwise a single calm message after a crisis would
+# silently clear it to "Low" with no clearance step.
+CLEARANCE_PROTOCOL = """
+The student recently showed high-risk signs and has NOT yet confirmed they are safe.
+Before continuing the conversation normally, ask ONE warm, direct safety question
+("Are you safe right now?" / "Ligtas ka ba ngayon?") and gently wait for a clear yes.
+Do not act as if everything is fine, do not drop the urgent tone, and do not repeat
+crisis resources unless they ask. Stay present and patient.
+"""
+
+# Explicit safety confirmations — a clear verbal/typed "I am safe / okay now" that
+# merits ending the de-escalation hold. Short affirmative replies (yes/opo) only
+# count once the session is already marked needs_clearance (i.e., GAIDA just asked
+# whether they are safe), to avoid treating a "yes" to an unrelated question as proof.
+SAFETY_CONFIRMATION_PATTERNS = [
+    re.compile(r"\bi[’' ]?m\s+safe\b"),
+    re.compile(r"\bi\s+am\s+safe\b"),
+    re.compile(r"\bsafe\s+na\s+(ako|ko)\b"),
+    re.compile(r"\bsafe\s+naman\s+ako\b"),
+    re.compile(r"\bsafe\s+ako\b"),
+    re.compile(r"\bj[o']?kay\s+na\s+(ako|ko)\b"),
+    re.compile(r"\bayos\s+na\s+(ako|ko)\b"),
+    re.compile(r"\bmas\s+(okay|ayos|kalmado|magaan)\s+na\b"),
+    re.compile(r"\bi\s+feel\s+(better|okay|fine|safe|good)\b"),
+    re.compile(r"\bfeeling\s+better\b"),
+    re.compile(r"\bbetter\s+na\s+(ako|ko)?\b"),
+    re.compile(r"\bben\s?gayan\s+na\s+ako\b"),
+]
+_SHORT_AFFIRM_RE = re.compile(r"\b(yes|opo|o[o'])\b|\byeah\b|\byep\b", re.IGNORECASE)
+
+
+def _is_safety_confirmation(text: str, session: Dict[str, Any]) -> bool:
+    txt = text.lower()
+    if any(p.search(txt) for p in SAFETY_CONFIRMATION_PATTERNS):
+        return True
+    # A crisp "yes" is only accepted while GAIDA is actively holding for safety.
+    if session.get("meta", {}).get("needs_clearance"):
+        tokens = re.sub(r"[^\w\s]", " ", txt).split()
+        if len(tokens) <= 4 and _SHORT_AFFIRM_RE.search(txt):
+            return True
+    return False
 
 
 def _detect_calming(text: str) -> bool:
@@ -76,6 +120,10 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
     detected_intent = detection["intent"]
     raw_confidence = detection["confidence"]
     crisis_resources = detection["crisis_resources"]
+
+    # Whether THIS turn explicitly confirms the student is safe. Determines
+    # whether a post-crisis hold may be lifted.
+    safety_confirm = _is_safety_confirmation(user_message, session)
 
     if vent_mode and (detected_intent == "suicidal" or raw_confidence >= 0.99):
         logger.warning("VENT MODE OVERRIDE: crisis detected in vent session %s", session_id)
@@ -120,6 +168,7 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
         session["meta"]["running_confidence"] = running_confidence
         session["meta"]["running_intent"] = "suicidal"
         session["meta"]["post_crisis"] = True
+        session["meta"]["needs_clearance"] = True
         post_crisis = True
     else:
         previous_confidence = session.get("meta", {}).get("running_confidence", 0.3)
@@ -187,10 +236,27 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
         session["meta"]["running_confidence"] = running_confidence
         session["meta"]["running_intent"] = intent
         session["meta"]["post_crisis"] = post_crisis
+        # An explicit safety confirmation ends the hold; otherwise a post-crisis
+        # session stays flagged until the student confirms they are safe.
+        session["meta"]["needs_clearance"] = bool(post_crisis and not safety_confirm)
+        if post_crisis and safety_confirm:
+            session["meta"]["post_crisis"] = False
 
     # --- Step 5: Map confidence to anxiety level ---
     post_crisis = session.get("meta", {}).get("post_crisis", False)
-    final_detection = _build_result(intent, running_confidence, post_crisis=post_crisis)
+
+    # De-escalation clearance: NEVER silently drop a High/Crisis session to
+    # Low or Normal. Hold the last known high level and ask the student to
+    # confirm they are safe before any de-escalation is allowed.
+    holding_clearance = post_crisis and not safety_confirm and running_confidence < 0.75
+    if holding_clearance:
+        prev_sev = session.get("meta", {}).get("peak_severity", "High")
+        hold_confidence = 0.99 if prev_sev == "Crisis" else 0.80
+        final_detection = _build_result(intent, hold_confidence)
+        final_detection["counselor_protocol"] = CLEARANCE_PROTOCOL
+        final_detection["crisis_resources"] = None
+    else:
+        final_detection = _build_result(intent, running_confidence, post_crisis=post_crisis)
     anxiety_level = final_detection["anxiety_level"]
     severity = final_detection["severity"]
     counselor_protocol = final_detection["counselor_protocol"]

@@ -25,13 +25,13 @@ session_manager, or the frontend dashboard component.
 import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 
 from app.database.database import supabase
 from app.services.rate_limiter import check_rate_limit
-from app.services.session_manager import start_session
-from app.utils.auth import create_session_token
+from app.services.session_manager import start_session, get_session
+from app.utils.auth import create_session_token, get_current_user
 
 router = APIRouter(prefix="/api/research", tags=["research"])
 
@@ -222,10 +222,96 @@ class Gad7Response(BaseModel):
     severity_band: str
 
 
+# ---------------------------------------------------------------------------
+# Withdraw — delete all data tied to an anonymous code
+# (This is the "delete by anonymous code" the research consent promises.)
+# ---------------------------------------------------------------------------
+class WithdrawRequest(BaseModel):
+    participant_code: str = Field(min_length=1, max_length=32)
+
+
+class WithdrawResponse(BaseModel):
+    ok: bool
+    deleted_sessions: int = 0
+    participant_removed: bool = False
+
+
+# Every child table is keyed by the same session_id string used across the
+# app, so deleting is a simple multi-table sweep in session_id order.
+_WITHDRAW_SESSION_CHILD_TABLES = [
+    "interactions",
+    "consents",
+    "gad7_responses",
+    "session_ratings",
+    "session_notes",
+    "counselor_alerts",
+    "acoustic_logs",
+]
+
+
+@router.post("/withdraw", response_model=WithdrawResponse)
+def withdraw_anonymous_code(payload: WithdrawRequest, request: Request):
+    """
+    Irreversibly delete every record tied to an anonymous participant code:
+    sessions, chat interactions, GAD-7 responses, ratings, notes, alerts,
+    acoustic logs, and the participant row itself. Idempotent — submitting an
+    unknown code safely returns an empty "everything deleted" result.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit(f"research_withdraw:{client_ip}")
+
+    code = payload.participant_code.strip()
+    participant_id = f"anon_{code}"
+
+    # 1. Find every session that belongs to this code.
+    try:
+        sessions = (
+            supabase.table("sessions")
+            .select("session_token")
+            .eq("participant_code", code)
+            .execute()
+        )
+        session_ids = [row["session_token"] for row in (sessions.data or [])]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to look up sessions: {e}")
+
+    # 2. Delete session-scoped child rows.
+    if session_ids:
+        for table in _WITHDRAW_SESSION_CHILD_TABLES:
+            try:
+                supabase.table(table).delete().in_("session_id", session_ids).execute()
+            except Exception as e:
+                # A table can be absent in some Supabase setups; do not fail the
+                # whole withdrawal because of one missing/renamed table.
+                print(f"[research] withdraw: {table} sweep failed: {e}")
+
+    # 3. Delete the session rows and the participant row themselves.
+    participant_removed = False
+    try:
+        supabase.table("sessions").delete().eq("participant_code", code).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete sessions: {e}")
+    try:
+        result = supabase.table("research_participants").delete().eq("participant_id", participant_id).execute()
+        participant_removed = bool(result.data)
+    except Exception as e:
+        print(f"[research] withdraw: participant row delete failed: {e}")
+
+    return WithdrawResponse(
+        ok=True,
+        deleted_sessions=len(session_ids),
+        participant_removed=participant_removed,
+    )
+
+
 @router.post("/gad7", response_model=Gad7Response)
-def submit_gad7(payload: Gad7Request):
+def submit_gad7(payload: Gad7Request, user: dict = Depends(get_current_user)):
     if any(a < 0 or a > 3 for a in payload.answers):
         raise HTTPException(status_code=400, detail="Each answer must be between 0 and 3")
+
+    session = get_session(payload.session_id)
+    if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
 
     total = sum(payload.answers)
     band = _severity_band(total)

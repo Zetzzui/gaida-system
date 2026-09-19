@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BACKEND_URL } from '../../config';
+import apiFetch from '../../api';
 
 // Standard GAD-7 items (Spitzer et al., 2006), asked over the last 2 weeks.
 const GAD7_QUESTIONS = [
@@ -138,18 +139,18 @@ export default function ResearchFlow() {
 
       // 2. Record consent against that same session_id — same endpoint and
       //    same mechanism the real student flow already uses.
-      await fetch(`${BACKEND_URL}/api/auth/consent`, {
+      await apiFetch(`${BACKEND_URL}/api/auth/consent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id, consent_given: true }),
-      });
+      }, session_token);
 
       // 3. Submit the GAD-7 answers tied to this session.
-      const gad7Res = await fetch(`${BACKEND_URL}/api/research/gad7`, {
+      const gad7Res = await apiFetch(`${BACKEND_URL}/api/research/gad7`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id, answers }),
-      });
+      }, session_token);
       if (!gad7Res.ok) throw new Error('Could not save your GAD-7 responses');
 
       // 4. Stage the handoff into the exact same dashboard/chat component

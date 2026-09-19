@@ -1,7 +1,7 @@
 from secrets import token_urlsafe
 from time import time
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 # In-memory token store: token -> { user_id, role, expires_at }
 # NOTE: same lifetime as the rest of the in-memory session state — tokens are
@@ -47,10 +47,32 @@ def get_current_user(authorization: str = Header(None)) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
 
-    _purge_expired()
-
-    user = ACTIVE_TOKENS.get(token)
+    user = validate_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired session token")
 
     return user
+
+
+def require_role(*roles: str):
+    """Dependency factory: require the authenticated user to hold one of `roles`.
+
+    Usage: `user: dict = Depends(require_role("counselor"))`
+    """
+    def _dependency(user: dict = Depends(get_current_user)):
+        if user.get("role") not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return _dependency
+
+
+def validate_token(token: str) -> dict | None:
+    """Return the user record for a raw token, or None if invalid/expired.
+
+    Used for WebSocket handshakes (query param) where Header() deps
+    aren't available.
+    """
+    if not token:
+        return None
+    _purge_expired()
+    return ACTIVE_TOKENS.get(token)

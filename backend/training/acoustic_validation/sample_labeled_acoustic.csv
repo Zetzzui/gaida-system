@@ -1,0 +1,6 @@
+filename,emotion,severity,note
+audio_samples/calm_01.wav,calm,Normal,Student describing a normal day at school
+audio_samples/anxious_01.wav,anxious,Moderate,Trembling voice and fast speech
+audio_samples/sad_01.wav,sad,Moderate,Slow monotone describing a breakup
+audio_samples/angry_01.wav,angry,Normal,Angry rant about a group project
+audio_samples/neutral_01.wav,neutral,Normal,Neutral reading of a safe-phrase test

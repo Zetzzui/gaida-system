@@ -123,15 +123,24 @@ export default function CounselorLogin() {
     }
     setLoading(true);
     try {
-      const TEST_COUNSELOR = { faculty_id: 'counselor01', password: 'counsel123', name: 'Test Counselor' };
-      if (facultyId !== TEST_COUNSELOR.faculty_id || password !== TEST_COUNSELOR.password) {
-        setError('Invalid credentials. Please check your faculty ID and password.');
+      const response = await fetch(`${BACKEND_URL}/api/auth/counselor-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ faculty_id: facultyId, password }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        localStorage.setItem('counselor_token', data.session_token);
+        localStorage.setItem('counselorData', JSON.stringify({
+          id: data.student_id,
+          name: data.name || 'Counselor',
+          role: 'counselor',
+        }));
+        navigate('/counselor-dashboard');
+      } else {
+        setError(data.detail || 'Invalid credentials. Please check your faculty ID and password.');
         setLoading(false);
-        return;
       }
-      localStorage.setItem('counselor_token', 'dev-token');
-      localStorage.setItem('counselorData', JSON.stringify(TEST_COUNSELOR));
-      navigate('/counselor-dashboard');
     } catch (err) {
       setError('An error occurred during login. Please try again.');
       console.error('Login error:', err);

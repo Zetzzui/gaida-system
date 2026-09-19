@@ -4,8 +4,8 @@
 >
 > A virtual counseling assistant for University of the East students. Students chat with an AI
 > ("GAIDA") that listens in **Tagalog, Taglish, and English**, detects anxiety from both **text and
-> voice**, escalates **High/Crisis** cases to a human counselor, and keeps a secure record of each
-> session. It works offline as an installable PWA.
+> voice**, escalates **High/Crisis** cases to a human counselor, and records each session for the
+> guidance office to review. It works offline as an installable PWA.
 
 This document explains the whole system in plain language: what it does, how it's built, how data
 flows through it, and where the interesting/risky parts are.
@@ -128,7 +128,7 @@ consent). This works for a single server instance but means everything resets on
 
 ### Services / infra
 - **Supabase** (hosted Postgres) — storage.
-- **Render** — hosts the backend (see `render.yaml`).
+- **Replit** — hosts the backend via `.replit` (Deployments from Git; pushing to `main` auto-deploys). `render.yaml` is a legacy leftover from the Render era and is **not used**.
 - **OpenAI API** — GPT model + Whisper transcription.
 - **gTTS (Google Translate TTS)** — spoken replies.
 
@@ -140,12 +140,12 @@ consent). This works for a single server instance but means everything resets on
 gaida-system/
 ├── README.md                     # default Vite template readme (not customized)
 ├── requirements.txt              # full pip-freeze dump (backup copy)
-├── render.yaml                   # Render deploy config
+├── render.yaml                   # Legacy Render deploy config (unused — backend is on Replit)
 ├── GAIDA_SYSTEM.md               # ← this document
 │
 ├── backend/
 │   ├── README.md                 # short note about audio libraries + run command
-│   ├── requirements.txt          # actual runtime deps used by Render
+│   ├── requirements.txt          # actual runtime deps
 │   ├── app/
 │   │   ├── main.py               # FastAPI app entry, startup prewarm, /virtual-agent
 │   │   ├── constants.py          # TEST_CREDENTIALS (student/counselor accounts)
@@ -734,30 +734,33 @@ Three caches/strategies:
 
 ## 13. Deployment
 
-### Backend — Render (`render.yaml`)
+### Backend — Replit (Deployments from Git)
 
-```yaml
-services:
-  - type: web
-    name: gaida-backend
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    packages:
-      - portaudio19-dev
-    envVars:
-      - key: OPENAI_API_KEY        (set manually, sync: false)
-      - key: SUPABASE_URL          (set manually, sync: false)
-      - key: SUPABASE_KEY          (set manually, sync: false)
-      - key: WHISPER_MODEL         value: medium
+The backend runs on Replit from the repo root's `.replit` file:
+
+```toml
+[deployment]
+run = ["sh", "-c", "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+deploymentTarget = "cloudrun"
 ```
 
-### Frontend — likely Vercel/netlify-style static host
+- **Flow:** any push to `main` triggers an automatic deployment — no manual "Republish" needed.
+- **Modules:** `nodejs-20` (unused by backend), `python-3.12`, `web`.
+- **Runtime arm:** 2 vCPU / 4 GiB (Replit free tier).
+- **Live URL:** `https://gaida-system--rainierburlasa4.replit.app` — health check `GET /` →
+  `{"status":"ok","message":"GAIDA Backend"}`.
+- **Secrets:** `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `GOOGLE_CLIENT_ID` are set as
+  Replit production secrets (backend refuses to boot without the Supabase pair).
+- The old `render.yaml` is a legacy leftover and is not deployed anywhere.
 
-- CORS in `main.py` already whitelists `https://gaida-system.vercel.app`.
+### Frontend — Vercel
+
+- Live at `https://gaida-system.vercel.app`. CORS in `main.py` whitelists this origin
+  (plus `localhost:5173` / `localhost:3000`).
 - Build with `npm run build` (vite). The PWA plugin injects the service worker.
-- The service worker treats `127.0.0.1` and `*.onrender.com` hosts as network-first (bypass).
+- `VITE_BACKEND_URL` is baked to the Replit backend URL above during the build.
+- The service worker still treats `127.0.0.1` and `*.onrender.com` hosts as network-first (bypass) —
+  a leftover from the Render era that is harmless for the Vercel build.
 
 ### Environment variables needed
 
@@ -765,7 +768,7 @@ services:
 |---|---|
 | `OPENAI_API_KEY` | `gpt_agent.py` (chat) + `voice.py` (Whisper) |
 | `SUPABASE_URL`, `SUPABASE_KEY` | `database/database.py` |
-| `WHISPER_MODEL` | expected by `render.yaml` (though `voice.py` hard-codes `"medium"`) |
+| `GOOGLE_CLIENT_ID` | `api/auth.py` (Google @ue.edu.ph sign-in) |
 | `VITE_BACKEND_URL` (frontend build) | `frontend/src/config.js` — defaults to `http://localhost:8000` |
 
 ---
@@ -828,11 +831,12 @@ The counselor login (frontend) uses its own hard-coded copy: `counselor01` / `co
 **Model / cost**
 - The GPT model `ft:gpt-3.5-turbo-0125:personal::DqH2I32e` is a **deprecated model lineage** —
   OpenAI has been sunsetting `gpt-3.5-turbo` fine-tunes. Plan to re-tune on `gpt-4o-mini` or newer.
-- Whisper `medium` is heavy; it's lazy-loaded, but the first voice request is slow. `WHISPER_MODEL`
-  env var is set in `render.yaml` but `voice.py` hard-codes `"medium"`.
+- Whisper `medium` is heavy; it's lazy-loaded, but the first voice request is slow (and may struggle
+  on Replit's free 4 GiB runtime under load — switching to `"base"` in `voice.py` is the workaround).
 - Acoustic features include a **hard-coded CapCut ffmpeg path**
-  (`acoustic_features.py:18`) as a fallback for a specific Windows machine — fine locally, ignored
-  on Render (which has `portaudio19-dev` and system ffmpeg expectations).
+  (`acoustic_features.py:18`) as a fallback for a specific Windows machine — fine locally, ignored on
+  hosts that have a system ffmpeg (Replit does; `voice.py` also auto-uses the `imageio-ffmpeg` binary
+  when `ffmpeg` is missing from PATH).
 
 **Frontend / data hygiene**
 - Counselor dashboard Overview chart uses **hard-coded mock data** (`CounselorDashboard.jsx` lines

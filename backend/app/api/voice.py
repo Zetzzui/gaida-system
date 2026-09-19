@@ -1,8 +1,9 @@
 import tempfile
 import os
 import traceback
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form
 from fastapi.responses import Response
+from app.utils.auth import get_current_user
 from app.services.tts import text_to_speech_bytes
 from app.analytics.acoustic_features import (
     extract_features,
@@ -48,8 +49,14 @@ def _get_whisper_model():
 async def speech_to_text(
     audio: UploadFile = File(...),
     session_id: str = Form(None),
+    user: dict = Depends(get_current_user),
 ):
     try:
+        if session_id:
+            session = get_session(session_id)
+            if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+                raise HTTPException(status_code=403, detail="Session does not belong to this user")
+
         # Accept any audio content type — browser sends various formats
         content_type = audio.content_type or ""
         if content_type and not content_type.startswith("audio/") and not content_type.startswith("video/webm"):
@@ -158,7 +165,7 @@ async def speech_to_text(
 
 
 @router.get("/tts")
-def tts(text: str):
+def tts(text: str, user: dict = Depends(get_current_user)):
     if not text:
         raise HTTPException(status_code=400, detail="text param is required.")
     try:
@@ -173,7 +180,7 @@ def tts(text: str):
 
 
 @router.post("/analyze")
-async def analyze_audio(audio: UploadFile = File(...)):
+async def analyze_audio(audio: UploadFile = File(...), user: dict = Depends(get_current_user)):
     audio_bytes = await audio.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="Empty audio file.")

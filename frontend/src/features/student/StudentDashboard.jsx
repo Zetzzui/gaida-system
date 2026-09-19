@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 // ─────────────────────────────────────────────────────────────
 
 import { BACKEND_URL as BACKEND } from '../../config';
+import apiFetch from '../../api';
 const POLL_INTERVAL = 3000;
 const TYPING_DEBOUNCE = 2000;
 
@@ -151,7 +152,7 @@ function Avatar({ role, accent }) {
   );
 }
 
-function MessageBubble({ message, theme }) {
+function MessageBubble({ message, theme, onFeedback, feedback }) {
   const { role, text, isVoice, acoustic, timestamp } = message;
 
   const bubbleStyle =
@@ -215,6 +216,29 @@ function MessageBubble({ message, theme }) {
           <span className="text-xs" style={{ color: theme.textMuted }}>{acoustic.severity}</span>
         </div>
       )}
+
+      {role === 'bot' && onFeedback && (
+        <div className="flex items-center gap-1.5 px-1 pt-1">
+          {[
+            { k: 'up', label: 'Helpful' },
+            { k: 'down', label: 'Not helpful' },
+          ].map((opt) => (
+            <button
+              key={opt.k}
+              onClick={() => onFeedback(opt.k)}
+              disabled={!!feedback}
+              className="text-[11px] px-2 py-0.5 rounded-full border transition-colors disabled:opacity-45"
+              style={{
+                background: feedback === opt.k ? theme.accentDark : 'transparent',
+                color: feedback === opt.k ? theme.userText : theme.textSecondary,
+                border: `1px solid ${theme.border}`,
+              }}
+            >
+              {feedback === opt.k ? '\u2713 ' : ''}{opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -247,6 +271,9 @@ export default function StudentDashboard() {
   const [ratingSubmitted,   setRatingSubmitted]   = useState(false);
   const [hoveredRating,     setHoveredRating]     = useState(null);
 
+  // Per-message helpfulness feedback: message index -> 'up' | 'down'
+  const [messageRatings, setMessageRatings] = useState({});
+
   const [theme, setTheme] = useState(
     () => THEMES[localStorage.getItem('gaida_theme')] || THEMES.purple
   );
@@ -275,7 +302,7 @@ export default function StudentDashboard() {
     // Feature 3: check-in prompt for returning High/Crisis students
     const studentId = localStorage.getItem('student_id');
     if (studentId) {
-      fetch(`${BACKEND}/api/counselor/student/checkin/${studentId}`)
+      apiFetch(`${BACKEND}/api/counselor/student/checkin/${studentId}`)
         .then(r => r.json())
         .then(data => {
           if (data.needs_checkin) {
@@ -312,7 +339,7 @@ export default function StudentDashboard() {
       if (!sessionId) return;
 
       try {
-        const res  = await fetch(`${BACKEND}/api/counselor/chat/${sessionId}`);
+        const res  = await apiFetch(`${BACKEND}/api/counselor/chat/${sessionId}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!data.messages) return;
@@ -368,7 +395,7 @@ export default function StudentDashboard() {
   const fireTyping = useCallback((isTyping) => {
     const sessionId = localStorage.getItem('session_id');
     if (!sessionId) return;
-    fetch(`${BACKEND}/api/counselor/typing/${sessionId}`, {
+    apiFetch(`${BACKEND}/api/counselor/typing/${sessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sender: 'student', is_typing: isTyping }),
@@ -390,7 +417,7 @@ export default function StudentDashboard() {
     const sessionId = localStorage.getItem('session_id');
     if (sessionId) {
       try {
-        await fetch(`${BACKEND}/api/counselor/session/rate`, {
+        await apiFetch(`${BACKEND}/api/counselor/session/rate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -423,7 +450,7 @@ export default function StudentDashboard() {
     const token     = localStorage.getItem('session_token');
 
     try {
-      const res = await fetch(`${BACKEND}/virtual-agent/stream`, {
+      const res = await apiFetch(`${BACKEND}/virtual-agent/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -518,7 +545,7 @@ export default function StudentDashboard() {
     if (!sessionId) return;
     setRequestingCounselor(true);
     try {
-      const res = await fetch(`${BACKEND}/api/counselor/request-counselor`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/request-counselor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
@@ -538,6 +565,24 @@ export default function StudentDashboard() {
     }
   };
 
+  // ── Per-message helpfulness feedback ─────────────────────────
+  const rateMessage = useCallback((index, value) => {
+    if (messageRatings[index]) return;
+    const m = messages[index];
+    const sessionId = localStorage.getItem('session_id');
+    setMessageRatings(prev => ({ ...prev, [index]: value }));
+    apiFetch(`${BACKEND}/api/session/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        message_index: index,
+        message_text: m?.text || '',
+        rating: value === 'up' ? 'helpful' : 'not_helpful',
+      }),
+    }).catch(() => {});
+  }, [messageRatings, messages]);
+
   // ── Session end + wellbeing rating ───────────────────────────
   const endSession = () => {
     if (messages.length > 0) {
@@ -551,7 +596,7 @@ export default function StudentDashboard() {
     const sessionId = localStorage.getItem('session_id');
     if (sessionId) {
       try {
-        await fetch(`${BACKEND}/api/session/${sessionId}/end`, {
+        await apiFetch(`${BACKEND}/api/session/${sessionId}/end`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -571,7 +616,7 @@ export default function StudentDashboard() {
     const sessionId = localStorage.getItem('session_id');
     if (sessionId) {
       try {
-        await fetch(`${BACKEND}/api/counselor/session/rate`, {  
+        await apiFetch(`${BACKEND}/api/counselor/session/rate`, {  
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -790,7 +835,7 @@ export default function StudentDashboard() {
                 <div className="space-y-1.5 text-xs leading-relaxed" style={{ color: theme.textMuted }}>
                   <p>Press Enter to send a message.</p>
                   <p>Use the mic button for voice input.</p>
-                  <p>Your session is private and encrypted.</p>
+                  <p>This conversation is kept confidential to help your counselor support you.</p>
                 </div>
               </div>
             </div>
@@ -870,7 +915,7 @@ export default function StudentDashboard() {
                 </svg>
               </div>
               <p className="text-sm" style={{ color: theme.textPrimary }}>Start the conversation.</p>
-              <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>Your session is private and secure.</p>
+              <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>This conversation stays between you and the Guidance Office.</p>
             </div>
           )}
 
@@ -893,7 +938,12 @@ export default function StudentDashboard() {
                 {(m.role === 'bot' || m.role === 'counselor') && (
                   <Avatar role={m.role} accent={theme.accent} />
                 )}
-                <MessageBubble message={m} theme={theme} />
+                <MessageBubble
+                  message={m}
+                  theme={theme}
+                  onFeedback={m.role === 'bot' ? (v) => rateMessage(i, v) : undefined}
+                  feedback={messageRatings[i]}
+                />
               </div>
             );
           })}

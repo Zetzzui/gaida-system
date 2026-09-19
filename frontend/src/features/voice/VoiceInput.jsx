@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
 import { BACKEND_URL } from '../../config';
+import apiFetch from '../../api';
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const hasSpeechRecognition = !!SpeechRecognition;
@@ -171,7 +172,7 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
       formData.append("audio", blob, "recording.webm");
       if (sessionId) formData.append("session_id", sessionId);
 
-      const res = await fetch(`${BACKEND_URL}/audio/speech-to-text`, {
+      const res = await apiFetch(`${BACKEND_URL}/audio/speech-to-text`, {
         method: "POST",
         body: formData,
       });

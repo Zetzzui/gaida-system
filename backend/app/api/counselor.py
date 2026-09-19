@@ -7,8 +7,9 @@ from datetime import datetime
 from io import BytesIO
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response as FastAPIResponse
+from app.utils.auth import get_current_user, require_role
 from pydantic import BaseModel
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -104,6 +105,20 @@ def should_alert_counselor(severity: str) -> bool:
     return severity in ("High", "Crisis")
 
 
+def require_session_owner(session_id: str, user: dict):
+    """403 unless the authenticated user owns the given session (or the
+    session has no recorded owner). Counselors are allowed to read any
+    session, so this check is skipped for role == counselor."""
+    if user.get("role") == "counselor":
+        return
+
+    from app.services.session_manager import get_session
+
+    session = get_session(session_id)
+    if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
+
+
 def process_alert(
     session_id: str,
     user_id: Optional[str],
@@ -168,7 +183,9 @@ def process_alert(
 # Alerts
 # ===========================================================================
 @router.get("/student/checkin/{student_id}")
-def get_checkin_status(student_id: str):
+def get_checkin_status(student_id: str, user: dict = Depends(get_current_user)):
+    if user.get("role") != "counselor" and user["user_id"] != student_id:
+        raise HTTPException(status_code=403, detail="Not allowed to view this student's check-in status")
     try:
         from app.database.database import supabase
         result = supabase.table("sessions")\
@@ -197,7 +214,8 @@ def get_checkin_status(student_id: str):
         return {"needs_checkin": False, "error": str(e)}
     
 @router.post("/session/rate")
-def rate_session(payload: SessionRating):
+def rate_session(payload: SessionRating, user: dict = Depends(get_current_user)):
+    require_session_owner(payload.session_id, user)
     try:
         from app.database.database import supabase
         supabase.table("session_ratings").insert({
@@ -212,18 +230,18 @@ def rate_session(payload: SessionRating):
 
 
 @router.get("/alerts")
-def get_alerts():
+def get_alerts(user: dict = Depends(require_role("counselor"))):
     return {"alerts": ALERTS, "count": len(ALERTS)}
 
 
 @router.get("/alerts/pending")
-def get_pending_alerts():
+def get_pending_alerts(user: dict = Depends(require_role("counselor"))):
     pending = [a for a in ALERTS if a.get("status") == "pending"]
     return {"alerts": pending, "count": len(pending)}
 
 
 @router.post("/alerts/update")
-def update_alert_status(payload: AlertStatusUpdate):
+def update_alert_status(payload: AlertStatusUpdate, user: dict = Depends(require_role("counselor"))):
     for alert in ALERTS:
         if alert["session_id"] == payload.session_id:
             alert["status"] = payload.status
@@ -241,7 +259,8 @@ def update_alert_status(payload: AlertStatusUpdate):
 
 
 @router.post("/request-counselor")
-def request_counselor(payload: CounselorRequest):
+def request_counselor(payload: CounselorRequest, user: dict = Depends(get_current_user)):
+    require_session_owner(payload.session_id, user)
     try:
         existing = next((a for a in ALERTS if a["session_id"] == payload.session_id), None)
         if existing:
@@ -285,7 +304,7 @@ def request_counselor(payload: CounselorRequest):
 
 
 @router.get("/severity/{anxiety_score}")
-def check_severity(anxiety_score: int):
+def check_severity(anxiety_score: int, user: dict = Depends(get_current_user)):
     severity = get_severity(anxiety_score)
     return {
         "anxiety_score": anxiety_score,
@@ -297,8 +316,39 @@ def check_severity(anxiety_score: int):
 # ===========================================================================
 # Live / active sessions
 # ===========================================================================
+# Sessions a counselor has already performed a welfare check on this process,
+# so repeated polling doesn't re-flag the same student every refresh (clears
+# on backend restart).
+_WELFARE_CHECKED: set[str] = set()
+
+
+@router.get("/sessions/welfare")
+def get_welfare_checks(user: dict = Depends(require_role("counselor"))):
+    """At-risk students who went silent: High/Crisis sessions with no activity
+    for WELFARE_CHECK_MINUTES. Surfaces silently-abandoned sessions so a human
+    can actively check on them, instead of them just disappearing from active."""
+    try:
+        from app.services.session_manager import get_sessions_needing_welfare_check
+
+        sessions = get_sessions_needing_welfare_check()
+        pending = [s for s in sessions if s["session_id"] not in _WELFARE_CHECKED]
+        return {"sessions": pending, "count": len(pending)}
+    except Exception as e:
+        return {"sessions": [], "count": 0, "error": str(e)}
+
+
+class WelfareCheckRequest(BaseModel):
+    session_id: str
+
+
+@router.post("/sessions/welfare-checked")
+def mark_welfare_checked(payload: WelfareCheckRequest, user: dict = Depends(require_role("counselor"))):
+    _WELFARE_CHECKED.add(payload.session_id)
+    return {"ok": True}
+
+
 @router.get("/sessions/active")
-def get_active_sessions():
+def get_active_sessions(user: dict = Depends(require_role("counselor"))):
     try:
         from app.services.session_manager import list_active_sessions
 
@@ -349,7 +399,7 @@ def get_active_sessions():
 
 
 @router.post("/sessions/resolve")
-def resolve_session(payload: ResolveSession):
+def resolve_session(payload: ResolveSession, user: dict = Depends(require_role("counselor"))):
     try:
         from app.services.session_manager import get_session
 
@@ -394,7 +444,7 @@ def resolve_session(payload: ResolveSession):
 
 
 @router.get("/sessions/resolved")
-def get_resolved_sessions():
+def get_resolved_sessions(user: dict = Depends(require_role("counselor"))):
     try:
         from app.database.database import supabase
         from app.constants import TEST_CREDENTIALS
@@ -466,11 +516,12 @@ def get_resolved_sessions():
 # Chat mirroring / typing indicators
 # ===========================================================================
 @router.get("/chat/{session_id}")
-def get_chat_transcript(session_id: str):
+def get_chat_transcript(session_id: str, user: dict = Depends(get_current_user)):
     """
     Returns full chat transcript including student messages mirrored via
     POST /chat/{session_id}. Also returns typing state for both parties.
     """
+    require_session_owner(session_id, user)
     try:
         from app.services.session_manager import get_session
 
@@ -514,8 +565,9 @@ def get_chat_transcript(session_id: str):
 
 
 @router.post("/typing/{session_id}")
-def set_typing(session_id: str, payload: TypingPayload):
+def set_typing(session_id: str, payload: TypingPayload, user: dict = Depends(get_current_user)):
     """Set typing indicator for counselor or student."""
+    require_session_owner(session_id, user)
     if session_id not in TYPING_STATES:
         TYPING_STATES[session_id] = {"counselor": False, "student": False}
     TYPING_STATES[session_id][payload.sender] = payload.is_typing
@@ -526,7 +578,7 @@ def set_typing(session_id: str, payload: TypingPayload):
 # Counselor takeover / handoff
 # ===========================================================================
 @router.post("/takeover")
-def counselor_takeover(payload: TakeOverMessage):
+def counselor_takeover(payload: TakeOverMessage, user: dict = Depends(require_role("counselor"))):
     """
     Counselor sends a message directly to the student.
     Sets counselor_active = True so the VA stops responding.
@@ -570,7 +622,7 @@ def counselor_takeover(payload: TakeOverMessage):
 
 
 @router.post("/return-to-gaida")
-def return_to_gaida(payload: dict):
+def return_to_gaida(payload: dict, user: dict = Depends(require_role("counselor"))):
     try:
         from app.services.session_manager import get_session, record_interaction
 
@@ -605,7 +657,7 @@ def return_to_gaida(payload: dict):
 # Session notes
 # ===========================================================================
 @router.post("/session-notes")
-def add_session_note(payload: SessionNote):
+def add_session_note(payload: SessionNote, user: dict = Depends(require_role("counselor"))):
     try:
         from app.database.database import supabase
 
@@ -623,7 +675,7 @@ def add_session_note(payload: SessionNote):
 
 
 @router.get("/session-notes/{session_id}")
-def get_session_notes(session_id: str):
+def get_session_notes(session_id: str, user: dict = Depends(require_role("counselor"))):
     try:
         from app.database.database import supabase
 
@@ -643,7 +695,7 @@ def get_session_notes(session_id: str):
 # Student profile
 # ===========================================================================
 @router.get("/student-profile/{student_id}")
-def get_student_profile(student_id: str):
+def get_student_profile(student_id: str, user: dict = Depends(require_role("counselor"))):
     from app.constants import TEST_CREDENTIALS
 
     creds = TEST_CREDENTIALS.get(student_id)
@@ -664,7 +716,7 @@ def get_student_profile(student_id: str):
 # Analytics
 # ===========================================================================
 @router.get("/analytics/overview")
-def get_analytics_overview():
+def get_analytics_overview(user: dict = Depends(require_role("counselor"))):
     try:
         from app.database.database import supabase
         from datetime import timedelta
@@ -709,7 +761,7 @@ def get_analytics_overview():
 # PDF export
 # ===========================================================================
 @router.get("/export-session/{session_id}")
-def export_session_pdf(session_id: str):
+def export_session_pdf(session_id: str, user: dict = Depends(require_role("counselor"))):
     try:
         from app.database.database import supabase
         from app.constants import TEST_CREDENTIALS
@@ -906,7 +958,7 @@ def export_session_pdf(session_id: str):
         raise HTTPException(status_code=500, detail=f"Export failed: {e}")
     
 @router.post("/sessions/delete")
-def soft_delete_cases(payload: DeleteCases):
+def soft_delete_cases(payload: DeleteCases, user: dict = Depends(require_role("counselor"))):
     """
     Soft delete a session and its associated data.
     Marks the session as deleted in the database and removes it from active memory.

@@ -9,6 +9,7 @@ from app.utils.consent_checker import has_consent
 
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 SESSION_STALE_MINUTES = 30  # sessions with no activity in this window are excluded from "active"
+WELFARE_CHECK_MINUTES = 30  # a High/Crisis session silent for this long is flagged for welfare check
 _SUBSCRIBERS: List[Callable] = []
 
 # Single worker so DB/file writes never block the chat response AND are
@@ -296,6 +297,44 @@ def list_active_sessions():
                 pass
         result.append(s)
     return result
+
+def get_sessions_needing_welfare_check(stale_minutes: int = WELFARE_CHECK_MINUTES) -> List[Dict[str, Any]]:
+    """At-risk students who went silent: sessions whose peak severity reached
+    High/Crisis and have had no activity for `stale_minutes` or more.
+    Surfaces these to a counselor so a human welfare check happens instead of
+    simply hiding the session as "abandoned" (which is all SESSION_STALE_MINUTES
+    did before)."""
+    now = datetime.utcnow()
+    flagged: List[Dict[str, Any]] = []
+    for sid, s in SESSIONS.items():
+        if not s.get("active"):
+            continue
+        severity = s.get("meta", {}).get("peak_severity", "Normal")
+        if severity not in ("High", "Crisis"):
+            continue
+        if s.get("meta", {}).get("counselor_active"):
+            continue
+        last_ts = None
+        if s.get("messages"):
+            last_ts = s["messages"][-1].get("timestamp")
+        if not last_ts:
+            last_ts = s.get("started_at")
+        if not last_ts:
+            continue
+        try:
+            last_dt = datetime.fromisoformat(str(last_ts).replace("Z", "+00:00"))
+            idle_minutes = (now - last_dt).total_seconds() / 60
+        except (ValueError, TypeError):
+            continue
+        if idle_minutes >= stale_minutes:
+            flagged.append({
+                "session_id": sid,
+                "student_id": s.get("user_id"),
+                "peak_severity": severity,
+                "idle_minutes": round(idle_minutes),
+                "last_message": (s["messages"][-1].get("text", "") if s.get("messages") else ""),
+            })
+    return flagged
 
 def end_session(session_id: str):
     s = SESSIONS.get(session_id)
