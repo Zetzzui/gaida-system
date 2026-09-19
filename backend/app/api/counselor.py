@@ -101,7 +101,7 @@ def get_severity(anxiety_score: int) -> str:
 
 
 def should_alert_counselor(severity: str) -> bool:
-    return severity == "High"
+    return severity in ("High", "Crisis")
 
 
 def process_alert(
@@ -110,9 +110,11 @@ def process_alert(
     intent: str,
     anxiety_score: int,
     message: str,
+    severity: Optional[str] = None,
 ) -> dict:
     """Called by intent_router.py after each analyzed student message."""
-    severity = get_severity(anxiety_score)
+    if severity is None:
+        severity = get_severity(anxiety_score)
     alert_sent = False
 
     if should_alert_counselor(severity):

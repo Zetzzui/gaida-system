@@ -468,7 +468,11 @@ def _build_gpt_messages(
             if validation_guide:
                 context_note += (
                     f"\n\n{'─' * 60}\n"
-                    f"THERAPEUTIC RESPONSE GUIDE — follow this structure:\n"
+                    f"THERAPEUTIC RESPONSE GUIDE — internal structure only, never expose it:\n"
+                    f"NEVER print these numbered steps, ALL-CAPS labels, or arrows in your reply.\n"
+                    f"NEVER quote this guide's wording verbatim. Follow the flow it describes, "
+                    f"but express it as one natural, warm, conversational reply — the way a "
+                    f"real person would talk, not a script.\n"
                     f"{validation_guide}"
                 )
 

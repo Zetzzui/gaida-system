@@ -79,6 +79,7 @@ const THEMES = {
 };
 
 const SEVERITY_CONFIG = {
+  Crisis:   { bar: 'bg-red-600',     text: 'text-red-400',     border: 'border-red-800',     width: 'w-full' },
   High:     { bar: 'bg-amber-500',   text: 'text-amber-400',   border: 'border-amber-800',   width: 'w-4/5' },
   Moderate: { bar: 'bg-teal-400',    text: 'text-teal-300',    border: 'border-teal-700',    width: 'w-2/4' },
   Low:      { bar: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-800', width: 'w-1/4' },

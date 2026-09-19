@@ -80,7 +80,7 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
     if vent_mode and (detected_intent == "suicidal" or raw_confidence >= 0.99):
         logger.warning("VENT MODE OVERRIDE: crisis detected in vent session %s", session_id)
 
-    is_venting = vent_mode and detected_intent != "suicidal" and raw_confidence < 0.99
+    is_venting = vent_mode and raw_confidence < 0.99
 
     if is_venting:
         # VENT MODE: track analysis silently, respond with listening prompt only.
@@ -113,7 +113,7 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
     # --- Normal path: crisis bypass / running confidence / priority ---
     intent = detected_intent
 
-    if intent == "suicidal" or raw_confidence >= 0.99:
+    if raw_confidence >= 0.99:
         running_confidence = 0.99
         if "meta" not in session:
             session["meta"] = {}
@@ -133,6 +133,11 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
             else:
                 running_confidence = (previous_confidence * 0.4) + (0.3 * 0.6)
             running_confidence = max(0.3, round(running_confidence, 3))
+        elif intent == "neutral" and not _detect_urgent(user_message):
+            # Unclear/unclassifiable message (often typos or a garbled,
+            # panicked fragment) — hold steady rather than treating "we
+            # couldn't classify this" as evidence of calming down.
+            running_confidence = previous_confidence
         else:
             boosted_raw = raw_confidence
             if (
@@ -167,10 +172,6 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
             max_drop = previous_confidence * 0.50
             running_confidence = max(max_drop, running_confidence)
             running_confidence = round(running_confidence, 3)
-
-            if intent == "neutral" and not _detect_urgent(user_message):
-                running_confidence = min(running_confidence, 0.55)
-                running_confidence = round(running_confidence, 3)
 
         intent_priority = ["neutral", "academic", "loneliness", "anger", "stress", "sadness", "anxiety", "suicidal"]
         prev_priority = intent_priority.index(previous_intent) if previous_intent in intent_priority else 0
@@ -308,6 +309,7 @@ def _finalize_turn(turn: Dict[str, Any], user_message: str, response_text: str, 
                 intent=intent,
                 anxiety_score=anxiety_score,
                 message=user_message,
+                severity=severity,
             )
         except Exception as e:
             logger.error(f"Failed to fire counselor alert: {e}")

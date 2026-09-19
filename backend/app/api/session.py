@@ -19,18 +19,10 @@ class MessagePayload(BaseModel):
 
 @router.post("/start")
 def start_session(payload: SessionCreate):
+    # svc_start() already creates the correct sessions row (keyed by
+    # session_token = sid) via session_manager. The old manual insert here
+    # wrote a second, mismatched row and is unused by the frontend — removed.
     sid = svc_start(payload.user_id)
-    if payload.user_id:
-        try:
-            from app.database.database import supabase
-            supabase.table("sessions").insert({
-                "student_id": payload.user_id,
-                "session_id": sid,
-                "session_token": f"session_{payload.user_id}_{sid[:8]}",
-                "is_counselor": False,
-            }).execute()
-        except Exception as e:
-            print(f"Session insert error: {e}")
     return {"session_id": sid}
 
 
