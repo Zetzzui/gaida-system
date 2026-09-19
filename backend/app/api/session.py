@@ -4,7 +4,7 @@ from typing import Dict, Any
 from datetime import datetime
 from app.services.session_manager import start_session as svc_start, get_session, list_active_sessions, record_interaction, end_session
 from app.services.rule_intent import analyze_with_rules
-from app.utils.auth import get_current_user, validate_token
+from app.utils.auth import get_current_user, validate_token, require_role
 
 router = APIRouter(prefix="/api/session", tags=["session"])
 
@@ -89,7 +89,7 @@ def get_session_state(session_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.get("/active")
-def active_sessions(user: dict = Depends(get_current_user)):
+def active_sessions(user: dict = Depends(require_role("counselor"))):
     return list_active_sessions()
 
 
