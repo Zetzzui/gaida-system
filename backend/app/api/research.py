@@ -330,3 +330,62 @@ def submit_gad7(payload: Gad7Request, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to store GAD-7 response: {e}")
 
     return Gad7Response(total_score=total, severity_band=band)
+
+
+class SusRequest(BaseModel):
+    session_id: str
+    # 10 answers, each 1-5, in SUS question order (see frontend
+    # ResearchSUS.jsx for the exact wording shown to participants).
+    answers: list[int] = Field(min_length=10, max_length=10)
+
+
+class SusResponse(BaseModel):
+    sus_score: float
+
+
+def _sus_score(answers: list[int]) -> float:
+    """
+    Standard SUS scoring (Brooke, 1996).
+    Odd items (index 0,2,4,6,8 -> q1,q3,q5,q7,q9): score = answer - 1.
+    Even items (index 1,3,5,7,9 -> q2,q4,q6,q8,q10): score = 5 - answer.
+    Sum the 10 per-item scores (range 0-40) and multiply by 2.5 -> 0-100.
+    """
+    total = 0
+    for i, a in enumerate(answers):
+        total += (a - 1) if i % 2 == 0 else (5 - a)
+    return round(total * 2.5, 2)
+
+
+@router.post("/sus", response_model=SusResponse)
+def submit_sus(payload: SusRequest, user: dict = Depends(get_current_user)):
+    """
+    Store one System Usability Scale administration for a research session.
+    Reached after the participant's chat session ends (see ResearchSUS.jsx),
+    not during intake — SUS measures usability of a system just used, so it
+    has to come after the participant has actually used GAIDA. Requires the
+    session_token confirmEndSession deliberately keeps around for research
+    sessions until this page clears it — same auth pattern as /gad7.
+    """
+    if any(a < 1 or a > 5 for a in payload.answers):
+        raise HTTPException(status_code=400, detail="Each answer must be between 1 and 5")
+
+    session = get_session(payload.session_id)
+    if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
+
+    score = _sus_score(payload.answers)
+
+    try:
+        supabase.table("sus_responses").insert({
+            "session_id": payload.session_id,
+            "q1": payload.answers[0], "q2": payload.answers[1],
+            "q3": payload.answers[2], "q4": payload.answers[3],
+            "q5": payload.answers[4], "q6": payload.answers[5],
+            "q7": payload.answers[6], "q8": payload.answers[7],
+            "q9": payload.answers[8], "q10": payload.answers[9],
+            "sus_score": score,
+        }).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to store SUS response: {e}")
+
+    return SusResponse(sus_score=score)

@@ -605,10 +605,21 @@ export default function StudentDashboard() {
       }
     }
     const wasResearchSession = localStorage.getItem('is_research_session') === 'true';
-    ['session_token', 'student_id', 'consent_given', 'session_id', 'is_research_session'].forEach(k =>
-      localStorage.removeItem(k)
-    );
-    navigate(wasResearchSession ? '/' : '/student-login');
+
+    // For a research session, session_id AND session_token are deliberately
+    // kept — the post-session SUS usability survey (ResearchSUS.jsx) needs
+    // session_id to know which session its answers belong to, and needs
+    // session_token so its apiFetch call to /api/research/sus can still
+    // authenticate (that endpoint requires a bearer token, same as
+    // /api/research/gad7). ResearchSUS.jsx clears both itself once the
+    // participant finishes or skips that page. A real (non-research)
+    // student session still clears everything immediately, as before.
+    const keysToClear = wasResearchSession
+      ? ['student_id', 'consent_given', 'is_research_session']
+      : ['session_token', 'student_id', 'consent_given', 'session_id', 'is_research_session'];
+    keysToClear.forEach(k => localStorage.removeItem(k));
+
+    navigate(wasResearchSession ? '/research-sus' : '/student-login');
   };
 
   const handleWellbeingRating = async (value) => {
