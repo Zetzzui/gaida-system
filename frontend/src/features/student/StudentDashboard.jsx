@@ -559,10 +559,11 @@ export default function StudentDashboard() {
         console.error('End session error:', e);
       }
     }
-    ['session_token', 'student_id', 'consent_given', 'session_id'].forEach(k =>
+    const wasResearchSession = localStorage.getItem('is_research_session') === 'true';
+    ['session_token', 'student_id', 'consent_given', 'session_id', 'is_research_session'].forEach(k =>
       localStorage.removeItem(k)
     );
-    navigate('/student-login');
+    navigate(wasResearchSession ? '/' : '/student-login');
   };
 
   const handleWellbeingRating = async (value) => {
@@ -727,6 +728,21 @@ export default function StudentDashboard() {
               {requestingCounselor ? 'Requesting...' : '🧑‍⚕️ Talk to a Counselor'}
             </button>
           )}
+        </div>
+
+        {/* Crisis resources — always visible, not conditional on detected severity */}
+        <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
+          <p className="text-xs uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>
+            In Crisis?
+          </p>
+          <div
+            className="rounded-lg p-3 text-xs leading-relaxed"
+            style={{ background: theme.bg, border: `1px solid ${theme.border}`, color: theme.textSecondary }}
+          >
+            <p>National Crisis Hotline: <strong style={{ color: theme.textPrimary }}>1553</strong> (24/7)</p>
+            <p className="mt-1">In Touch Crisis Line: <strong style={{ color: theme.textPrimary }}>(02) 893-7603</strong></p>
+            <p className="mt-1">If in immediate danger, call <strong style={{ color: theme.textPrimary }}>911</strong>.</p>
+          </div>
         </div>
 
         {/* Settings */}

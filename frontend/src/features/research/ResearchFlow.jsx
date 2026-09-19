@@ -26,7 +26,7 @@ const STEP = { CONSENT: 0, IDENTIFICATION: 1, DEMOGRAPHICS: 2, GAD7: 3, SUBMITTI
 // TODO: add Reyes's email to RESEARCH_CONTACT_EMAIL once available.
 // -----------------------------------------------------------------------
 const RESEARCH_TEAM = 'Burlasa, Lazaro, Olazo, Reyes, and Roxas — BS Computer Science, University of the East, Manila';
-const RESEARCH_CONTACT_EMAIL = 'lazaro.edward@ue.edu.ph, olazo.davenathaniel@ue.edu.ph, or roxas.jahnvincent@ue.edu.ph';
+const RESEARCH_CONTACT_EMAIL = 'lazaro.edward@ue.edu.ph, olazo.davenathaniel@ue.edu.ph, reyes.laurienaemanuel@ue.edu.ph, or roxas.jahnvincent@ue.edu.ph';
 const CERC_REFERENCE = 'CCSS-CERC Code/Registration ID 2025-1-PTCS-202';
 
 // UE student numbers observed as 4-digit enrollment year + 7-digit sequence

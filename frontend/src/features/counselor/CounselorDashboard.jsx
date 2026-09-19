@@ -1099,6 +1099,16 @@ function ReportsPage() {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function CounselorDashboard() {
   const navigate = useNavigate();
+
+  // ── Auth guard ────────────────────────────────────────────────
+  // Unlike StudentDashboard, this component previously had no check at
+  // all — anyone could reach /counselor-dashboard directly by URL.
+  useEffect(() => {
+    const token = localStorage.getItem('counselor_token');
+    if (!token) {
+      navigate('/counselor-login');
+    }
+  }, [navigate]);
   const [activePage, setActivePage] = useState('overview');
   const [alerts, setAlerts] = useState([]);
   const [sessions, setSessions] = useState([]);
