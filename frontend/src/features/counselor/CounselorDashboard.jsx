@@ -253,7 +253,13 @@ function OverviewPage({ alerts, sessions }) {
 }
 
 // ── Escalation helpers ────────────────────────────────────────────────────────
-const getEscalationState = (timestamp) => {
+// Prefers the server-computed escalation state (which also drives re-notification
+// emails); falls back to a client-side calculation for older payloads.
+const getEscalationState = (a) => {
+  if (a.escalation_level) {
+    return { level: a.escalation_level, ageMinutes: a.age_minutes ?? 0, isOffHours: !!a.is_off_hours };
+  }
+  const timestamp = a.timestamp;
   const now = Date.now();
   const alertTime = new Date(timestamp).getTime();
   const ageMinutes = Math.floor((now - alertTime) / 60000);
@@ -284,15 +290,15 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
   useEffect(() => {
     const urgentPending = alerts.filter(a => {
       if (a.status !== 'pending') return false;
-      const esc = getEscalationState(a.timestamp);
-      return esc.level === 'urgent';
+      const esc = getEscalationState(a);
+      return esc.level === 'urgent' || esc.level === 'overdue';
     });
     if (urgentPending.length > 0) playAlertSound();
     const interval = setInterval(() => {
       const stillUrgent = alerts.filter(a => {
         if (a.status !== 'pending') return false;
-        const esc = getEscalationState(a.timestamp);
-        return esc.level === 'urgent';
+        const esc = getEscalationState(a);
+        return esc.level === 'urgent' || esc.level === 'overdue';
       });
       if (stillUrgent.length > 0) playAlertSound();
     }, 5 * 60 * 1000); // every 5 minutes
@@ -304,10 +310,11 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
 
   const AlertRow = ({ a }) => {
     const sc  = severityColor(a.severity);
-    const esc = getEscalationState(a.timestamp);
+    const esc = getEscalationState(a);
     const needsAck = a.severity === 'High' || a.severity === 'Crisis';
 
     const borderColor =
+      esc.level === 'overdue' ? 'border-red-700' :
       esc.level === 'urgent'  ? 'border-red-500' :
       esc.level === 'warning' ? 'border-amber-400' :
       a.severity === 'High' || a.severity === 'Crisis' ? 'border-red-500' :
@@ -315,6 +322,7 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
       'border-amber-400';
 
     const bgColor =
+      esc.level === 'overdue' ? 'bg-red-100' :
       esc.level === 'urgent'  ? 'bg-red-50' :
       esc.level === 'warning' ? 'bg-amber-50' :
       a.severity === 'High' || a.severity === 'Crisis' ? 'bg-red-50' :
@@ -333,6 +341,11 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
               <span className="text-xs text-gray-400">{formatRelative(a.timestamp)}</span>
 
               {/* Escalation badge */}
+              {esc.level === 'overdue' && (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-700 text-white animate-pulse">
+                  🚨 OVERDUE {esc.ageMinutes}m
+                </span>
+              )}
               {esc.level === 'urgent' && (
                 <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-600 text-white animate-pulse">
                   ⚠ Unattended {esc.ageMinutes}m
@@ -341,6 +354,13 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
               {esc.level === 'warning' && (
                 <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500 text-white">
                   Waiting {esc.ageMinutes}m+
+                </span>
+              )}
+
+              {/* Needs-supervisor badge (alert passed the overdue deadline) */}
+              {a.needs_supervisor && (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-gray-900 text-white">
+                  Needs supervisor
                 </span>
               )}
 
@@ -371,12 +391,22 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
         </div>
 
         {/* Urgent warning bar */}
-        {esc.level === 'urgent' && (
+        {(esc.level === 'urgent' || esc.level === 'overdue') && (
           <div className="mt-3 pt-3 border-t border-red-200 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
             <p className="text-xs text-red-700 font-medium">
               This alert has been waiting {esc.ageMinutes} minutes without a response.
               {esc.isOffHours && ' Session occurred outside office hours.'}
+            </p>
+          </div>
+        )}
+
+        {/* Overdue → supervisor notice (server also re-notifies by email) */}
+        {esc.level === 'overdue' && (
+          <div className="mt-2 pt-2 border-t border-red-300 flex items-start gap-2">
+            <div className="w-2 h-2 rounded-full bg-red-700 animate-pulse flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-800 font-semibold">
+              Past the escalation deadline — supervisor/backup has been notified by email. Acknowledge this alert immediately.
             </p>
           </div>
         )}
