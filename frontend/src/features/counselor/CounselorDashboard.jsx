@@ -83,6 +83,7 @@ const anxietyTrendData = [
 const NAV = [
   { id: 'overview',  label: 'Overview',         icon: '⊞' },
   { id: 'alerts',    label: 'Alerts',            icon: '⚠' },
+  { id: 'welfare',   label: 'Welfare Checks',    icon: '☎' },
   { id: 'sessions',  label: 'Active Sessions',   icon: '◉' },
   { id: 'detection', label: 'Anxiety Detection', icon: '〜' },
   { id: 'reports',   label: 'Reports',           icon: '≡' },
@@ -377,6 +378,58 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus }) {
           <p className="text-4xl mb-3">✓</p>
           <p className="text-sm font-medium">No alerts</p>
           <p className="text-xs mt-1">High and Crisis sessions will appear here</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Welfare Checks Page ───────────────────────────────────────────────────────
+// Surfaces High/Crisis sessions that went silent (see
+// get_sessions_needing_welfare_check in session_manager.py) — a student who
+// hit a severe reading and then stopped responding, rather than one who
+// calmly ended the session. Backend logic already existed; this page is
+// what actually makes it visible to a counselor.
+function WelfarePage({ welfare, onViewChat, onMarkChecked }) {
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Welfare Checks</h1>
+        <p className="text-sm text-gray-500 mt-0.5">
+          High/Crisis sessions that went silent with no follow-up — worth a human check-in
+        </p>
+      </div>
+      {welfare.length > 0 ? (
+        welfare.map((w) => {
+          const sc = severityColor(w.peak_severity);
+          return (
+            <div key={w.session_id} className="p-4 border-l-4 border-red-500 bg-red-50 rounded-r-xl mb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.bg} ${sc.text}`}>
+                      Peak: {w.peak_severity}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-700 text-gray-200">
+                      Silent {w.idle_minutes}m
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Session: {w.session_id.slice(0, 16)}...</p>
+                  {w.last_message && <p className="text-xs text-gray-600 truncate">Last message: "{w.last_message}"</p>}
+                </div>
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <button onClick={() => onViewChat(w.session_id)} className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 font-medium">View Chat</button>
+                  <button onClick={() => onMarkChecked(w.session_id)} className="text-xs px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white font-medium">Mark Checked</button>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-4xl mb-3">☎</p>
+          <p className="text-sm font-medium">No welfare checks needed</p>
+          <p className="text-xs mt-1">Silent High/Crisis sessions will appear here</p>
         </div>
       )}
     </div>
@@ -1113,6 +1166,7 @@ export default function CounselorDashboard() {
   const [activePage, setActivePage] = useState('overview');
   const [alerts, setAlerts] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [welfare, setWelfare] = useState([]);
   const [chatSessionId, setChatSessionId] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const prevPendingCountRef = useRef(0);
@@ -1121,9 +1175,11 @@ export default function CounselorDashboard() {
   useEffect(() => {
     fetchAlerts();
     fetchSessions();
+    fetchWelfare();
     const interval = setInterval(() => {
       fetchAlerts();
       fetchSessions();
+      fetchWelfare();
     }, 2000);
     return () => clearInterval(interval);
   }, []);
@@ -1172,6 +1228,25 @@ export default function CounselorDashboard() {
     } catch (e) {}
   };
 
+  const fetchWelfare = async () => {
+    try {
+      const res = await apiFetch(`${BACKEND}/api/counselor/sessions/welfare`);
+      const data = await res.json();
+      if (data.sessions) setWelfare(data.sessions);
+    } catch (e) {}
+  };
+
+  const handleMarkWelfareChecked = async (sessionId) => {
+    try {
+      await apiFetch(`${BACKEND}/api/counselor/sessions/welfare-checked`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      setWelfare(prev => prev.filter(w => w.session_id !== sessionId));
+    } catch (e) {}
+  };
+
   const pendingCount = alerts.filter(a => a.status === 'pending').length;
 
   const logout = () => {
@@ -1201,6 +1276,8 @@ export default function CounselorDashboard() {
           {NAV.map((navItem) => {
             const active = activePage === navItem.id;
             const isAlerts = navItem.id === 'alerts';
+            const isWelfare = navItem.id === 'welfare';
+            const badgeCount = isAlerts ? pendingCount : isWelfare ? welfare.length : 0;
             return (
               <button
                 key={navItem.id}
@@ -1210,14 +1287,14 @@ export default function CounselorDashboard() {
               >
                 <span className="flex-shrink-0 text-base relative">
                   {navItem.icon}
-                  {isAlerts && pendingCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-white flex items-center justify-center" style={{fontSize:'8px'}}>{pendingCount}</span>
+                  {badgeCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-white flex items-center justify-center" style={{fontSize:'8px'}}>{badgeCount}</span>
                   )}
                 </span>
                 {expanded && <span className="ml-3 text-sm font-medium whitespace-nowrap">{navItem.label}</span>}
                 {!expanded && (
                   <span className="absolute left-14 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-                    {navItem.label}{isAlerts && pendingCount > 0 && ` (${pendingCount})`}
+                    {navItem.label}{badgeCount > 0 && ` (${badgeCount})`}
                   </span>
                 )}
               </button>
@@ -1242,6 +1319,7 @@ export default function CounselorDashboard() {
           <div className="w-full max-w-6xl mx-auto p-4 sm:p-6">
             {activePage === 'overview'  && <OverviewPage alerts={alerts} sessions={sessions} />}
             {activePage === 'alerts'    && <AlertsPage alerts={alerts} onViewChat={setChatSessionId} onUpdateStatus={handleUpdateStatus} />}
+            {activePage === 'welfare'   && <WelfarePage welfare={welfare} onViewChat={setChatSessionId} onMarkChecked={handleMarkWelfareChecked} />}
             {activePage === 'sessions' && <SessionsPage sessions={sessions} onViewChat={setChatSessionId} lastUpdated={lastUpdated} />}
             {activePage === 'detection' && <DetectionPage />}
             {activePage === 'reports'   && <ReportsPage />}
