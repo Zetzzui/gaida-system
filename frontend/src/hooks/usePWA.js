@@ -35,11 +35,15 @@ export function usePWA({ onQueuedMessageSent } = {}) {
 
         // Trigger background sync when back online
         window.addEventListener("online", () => {
+          // Background Sync (Chrome / Edge / Android)
           if ("sync" in registration) {
             registration.sync
               .register("gaida-sync-messages")
               .catch((err) => console.warn("[GAIDA PWA] Sync registration failed:", err));
           }
+          // Fallback for browsers without Background Sync (iOS Safari):
+          // ask the service worker to flush the queue right away.
+          navigator.serviceWorker.controller?.postMessage({ type: "FLUSH_QUEUE" });
         });
       })
       .catch((err) => {
@@ -60,9 +64,13 @@ export function usePWA({ onQueuedMessageSent } = {}) {
       }
 
       if (type === "QUEUED_MESSAGE_SENT") {
-        // A queued message was successfully sent after reconnecting
+        // A queued message was successfully sent after reconnecting.
+        // Compare by value (JSON) — the original and this payload are
+        // separate object instances, so reference equality never matches.
         setQueuedMessages((prev) =>
-          prev.filter((m) => m !== payload.original)
+          prev.filter(
+            (m) => JSON.stringify(m) !== JSON.stringify(payload.original || {})
+          )
         );
         if (onQueuedMessageSent) {
           onQueuedMessageSent(payload);

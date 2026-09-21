@@ -42,7 +42,7 @@
       "name": "Open Chat",
       "short_name": "Chat",
       "description": "Start a new conversation with GAIDA",
-      "url": "/chat",
+      "url": "/student-dashboard",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ]
