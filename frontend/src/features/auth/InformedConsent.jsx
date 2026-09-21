@@ -96,6 +96,18 @@ const handleAccept = async (e) => {
               </p>
             </div>
 
+            {/* AI Processing */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">AI Processing:</h3>
+              <p>
+                To analyze your messages and generate responses, GAIDA sends your text
+                input to OpenAI's API, a third-party AI service provider. This means your
+                messages are processed on OpenAI's servers as part of how GAIDA works. This
+                processing is used only to power the conversation and detection features
+                described above, not for any other purpose.
+              </p>
+            </div>
+
             {/* Privacy */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Privacy:</h3>
@@ -104,9 +116,9 @@ const handleAccept = async (e) => {
                 the system's development, access controls and encryption-at-rest for this
                 data are still being implemented, so please avoid sharing information you
                 would consider highly sensitive (such as account numbers or passwords).
-                Your data will not be shared with third parties without your explicit
-                consent, except as required by law or in cases of imminent danger to
-                yourself or others.
+                Your data will not be shared with third parties beyond the AI processing
+                described above, without your explicit consent, except as required by law
+                or in cases of imminent danger to yourself or others.
               </p>
             </div>
 
@@ -158,9 +170,11 @@ const handleAccept = async (e) => {
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Data Retention:</h3>
               <p>
-                Your session data will be retained for a period of two (2) academic years for counseling continuity 
-                and quality improvement purposes, after which it will be securely deleted unless you request earlier 
-                deletion or extended retention is required by university policy.
+                Your session data is intended to be retained for counseling continuity and
+                quality improvement purposes. Automatic, scheduled deletion after a fixed
+                period is not yet implemented in the system; until it is, data is retained
+                until you request deletion (see "Rights" above) or the guidance office
+                removes it in line with university record-keeping policy.
               </p>
             </div>
 
