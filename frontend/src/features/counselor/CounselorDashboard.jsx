@@ -248,7 +248,7 @@ const getEscalationState = (timestamp) => {
 };
 
 
-function AlertsPage({ alerts, onViewChat, onUpdateStatus }) {
+function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
   const [now, setNow] = useState(Date.now());
 
   // Tick every 30 seconds to update escalation states
@@ -282,6 +282,7 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus }) {
   const AlertRow = ({ a }) => {
     const sc  = severityColor(a.severity);
     const esc = getEscalationState(a.timestamp);
+    const needsAck = a.severity === 'High' || a.severity === 'Crisis';
 
     const borderColor =
       esc.level === 'urgent'  ? 'border-red-500' :
@@ -329,10 +330,18 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus }) {
             </div>
             <p className="text-xs font-semibold text-gray-700 mb-1">Session: {a.session_id.slice(0, 16)}...</p>
             <p className="text-xs text-gray-600 truncate">"{a.message}"</p>
+            {a.acknowledged && (
+              <p className="text-xs text-green-700 mt-1">
+                ✓ Acknowledged{a.acknowledged_at ? ` ${formatRelative(a.acknowledged_at)}` : ''}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2 flex-shrink-0">
             <button onClick={() => onViewChat(a.session_id)} className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 font-medium">View Chat</button>
-            {a.status === 'pending' && (
+            {a.status === 'pending' && needsAck && !a.acknowledged && (
+              <button onClick={() => onAcknowledge(a.session_id)} className="text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold">Acknowledge</button>
+            )}
+            {a.status === 'pending' && (!needsAck || a.acknowledged) && (
               <button onClick={() => onUpdateStatus(a.session_id, 'reviewed')} className="text-xs px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white font-medium">Mark Reviewed</button>
             )}
           </div>
@@ -721,6 +730,8 @@ const typingThrottleRef = useRef(null);
       if (data.ok) {
         setResolved(true);
         setTimeout(() => onClose(), 1500);
+      } else if (!res.ok) {
+        alert(data.detail || 'Could not resolve this session — it may need to be acknowledged first (Alerts tab).');
       }
     } catch (e) {} finally {
       setResolving(false);
@@ -1219,10 +1230,26 @@ export default function CounselorDashboard() {
 
   const handleUpdateStatus = async (sessionId, status) => {
     try {
-      await apiFetch(`${BACKEND}/api/counselor/alerts/update`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/alerts/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || 'This alert needs to be acknowledged first.');
+        return;
+      }
+      fetchAlerts();
+    } catch (e) {}
+  };
+
+  const handleAcknowledge = async (sessionId) => {
+    try {
+      await apiFetch(`${BACKEND}/api/counselor/alerts/acknowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
       });
       fetchAlerts();
     } catch (e) {}
@@ -1318,7 +1345,7 @@ export default function CounselorDashboard() {
         <main className="flex-1 overflow-y-auto">
           <div className="w-full max-w-6xl mx-auto p-4 sm:p-6">
             {activePage === 'overview'  && <OverviewPage alerts={alerts} sessions={sessions} />}
-            {activePage === 'alerts'    && <AlertsPage alerts={alerts} onViewChat={setChatSessionId} onUpdateStatus={handleUpdateStatus} />}
+            {activePage === 'alerts'    && <AlertsPage alerts={alerts} onViewChat={setChatSessionId} onUpdateStatus={handleUpdateStatus} onAcknowledge={handleAcknowledge} />}
             {activePage === 'welfare'   && <WelfarePage welfare={welfare} onViewChat={setChatSessionId} onMarkChecked={handleMarkWelfareChecked} />}
             {activePage === 'sessions' && <SessionsPage sessions={sessions} onViewChat={setChatSessionId} lastUpdated={lastUpdated} />}
             {activePage === 'detection' && <DetectionPage />}

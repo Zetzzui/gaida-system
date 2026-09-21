@@ -102,15 +102,35 @@ export default function Withdraw() {
 
         {step === STEP.DONE && (
           <div className="text-center py-4">
-            <p className="text-gray-200 mb-2">
-              {result?.deleted_sessions
-                ? `Done — ${result.deleted_sessions} session${result.deleted_sessions === 1 ? '' : 's'} and all associated data have been deleted.`
-                : 'Done — no data was found for that code, so there was nothing to delete.'}
-            </p>
-            <p className="text-gray-500 text-xs mb-6">
-              If you believe this is a mistake, contact the research team — but note the
-              deletion itself cannot be reversed.
-            </p>
+            {result?.ok === false ? (
+              <>
+                <p className="text-amber-400 font-semibold mb-2">Partially completed</p>
+                <p className="text-gray-200 mb-2 text-sm">
+                  {result?.deleted_sessions
+                    ? `${result.deleted_sessions} session${result.deleted_sessions === 1 ? '' : 's'} were deleted, but some data could not be removed automatically.`
+                    : 'Some data could not be removed automatically.'}
+                  {' '}Please contact the research team below with your code so they can
+                  finish the deletion manually.
+                </p>
+                {Array.isArray(result?.errors) && result.errors.length > 0 && (
+                  <p className="text-gray-500 text-xs mb-4 break-words">
+                    Details: {result.errors.join('; ')}
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-gray-200 mb-2">
+                  {result?.deleted_sessions
+                    ? `Done — ${result.deleted_sessions} session${result.deleted_sessions === 1 ? '' : 's'} and all associated data have been deleted.`
+                    : 'Done — no data was found for that code, so there was nothing to delete.'}
+                </p>
+                <p className="text-gray-500 text-xs mb-6">
+                  If you believe this is a mistake, contact the research team — but note the
+                  deletion itself cannot be reversed.
+                </p>
+              </>
+            )}
             <button
               onClick={() => navigate('/')}
               className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold text-sm"

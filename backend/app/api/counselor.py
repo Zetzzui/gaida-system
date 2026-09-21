@@ -54,6 +54,11 @@ class AlertStatusUpdate(BaseModel):
     status: str
 
 
+class AlertAcknowledge(BaseModel):
+    session_id: str
+    counselor_id: Optional[str] = None
+
+
 class TakeOverMessage(BaseModel):
     session_id: str
     message: str
@@ -151,6 +156,9 @@ def process_alert(
                 "last_message": message,
                 "status": "pending",
                 "counselor_took_over": False,
+                "acknowledged": False,
+                "acknowledged_at": None,
+                "acknowledged_by": None,
             }
             ALERTS.append(alert_entry)
 
@@ -260,6 +268,20 @@ def get_pending_alerts(user: dict = Depends(require_role("counselor"))):
 def update_alert_status(payload: AlertStatusUpdate, user: dict = Depends(require_role("counselor"))):
     for alert in ALERTS:
         if alert["session_id"] == payload.session_id:
+            # Crisis/High alerts must be explicitly acknowledged (see
+            # /alerts/acknowledge) before they can be moved off "pending" —
+            # otherwise a counselor could silently clear the highest-risk
+            # alerts without ever confirming they saw one.
+            if (
+                alert.get("severity") in ("High", "Crisis")
+                and not alert.get("acknowledged")
+                and payload.status != "pending"
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="This Crisis/High alert must be acknowledged before it can be updated.",
+                )
+
             alert["status"] = payload.status
             alert["updated_at"] = datetime.utcnow().isoformat() + "Z"
             try:
@@ -271,6 +293,35 @@ def update_alert_status(payload: AlertStatusUpdate, user: dict = Depends(require
             except Exception as e:
                 print(f"Supabase alert update error: {e}")
             return {"ok": True}
+    return {"ok": False, "error": "Alert not found"}
+
+
+@router.post("/alerts/acknowledge")
+def acknowledge_alert(payload: AlertAcknowledge, user: dict = Depends(require_role("counselor"))):
+    """Explicit "I have seen this" action for Crisis/High alerts, distinct
+    from resolving/reviewing them. Required before /alerts/update or
+    /sessions/resolve can move a Crisis/High alert off "pending"."""
+    for alert in ALERTS:
+        if alert["session_id"] == payload.session_id:
+            alert["acknowledged"] = True
+            alert["acknowledged_at"] = datetime.utcnow().isoformat() + "Z"
+            alert["acknowledged_by"] = payload.counselor_id or user.get("user_id")
+            try:
+                from app.database.database import supabase
+
+                supabase.table("counselor_alerts").update(
+                    {
+                        "acknowledged": True,
+                        "acknowledged_at": alert["acknowledged_at"],
+                        "acknowledged_by": alert["acknowledged_by"],
+                    }
+                ).eq("session_id", payload.session_id).execute()
+            except Exception as e:
+                # Columns may not exist yet in Supabase — the in-memory
+                # ALERTS list (used by the live dashboard) is already
+                # updated above, so this failure is non-fatal.
+                print(f"Supabase alert acknowledge error: {e}")
+            return {"ok": True, "acknowledged_at": alert["acknowledged_at"]}
     return {"ok": False, "error": "Alert not found"}
 
 
@@ -294,6 +345,9 @@ def request_counselor(payload: CounselorRequest, user: dict = Depends(get_curren
                 "last_message": payload.message,
                 "status": "pending",
                 "counselor_took_over": False,
+                "acknowledged": False,
+                "acknowledged_at": None,
+                "acknowledged_by": None,
             }
             ALERTS.append(alert_entry)
 
@@ -422,6 +476,20 @@ def resolve_session(payload: ResolveSession, user: dict = Depends(require_role("
         session = get_session(payload.session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+
+        # Same Crisis/High acknowledgment gate as /alerts/update — resolving
+        # a session is another way to clear its alert, so it needs the same
+        # "a human actually saw this" check.
+        matching_alert = next((a for a in ALERTS if a["session_id"] == payload.session_id), None)
+        if (
+            matching_alert
+            and matching_alert.get("severity") in ("High", "Crisis")
+            and not matching_alert.get("acknowledged")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="This Crisis/High alert must be acknowledged before the session can be resolved.",
+            )
 
         if "meta" not in session:
             session["meta"] = {}

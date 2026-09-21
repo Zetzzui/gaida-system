@@ -234,6 +234,7 @@ class WithdrawResponse(BaseModel):
     ok: bool
     deleted_sessions: int = 0
     participant_removed: bool = False
+    errors: list[str] = []
 
 
 # Every child table is keyed by the same session_id string used across the
@@ -262,6 +263,7 @@ def withdraw_anonymous_code(payload: WithdrawRequest, request: Request):
 
     code = payload.participant_code.strip()
     participant_id = f"anon_{code}"
+    errors: list[str] = []
 
     # 1. Find every session that belongs to this code.
     try:
@@ -275,32 +277,63 @@ def withdraw_anonymous_code(payload: WithdrawRequest, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to look up sessions: {e}")
 
-    # 2. Delete session-scoped child rows.
+    # 2. Delete session-scoped child rows. A table can be absent in some
+    # Supabase setups; do not fail the whole withdrawal because of one
+    # missing/renamed table, but do report it — a silent skip here would
+    # leave data behind while telling the participant everything was gone.
     if session_ids:
         for table in _WITHDRAW_SESSION_CHILD_TABLES:
             try:
                 supabase.table(table).delete().in_("session_id", session_ids).execute()
             except Exception as e:
-                # A table can be absent in some Supabase setups; do not fail the
-                # whole withdrawal because of one missing/renamed table.
                 print(f"[research] withdraw: {table} sweep failed: {e}")
+                errors.append(f"{table}: {e}")
 
-    # 3. Delete the session rows and the participant row themselves.
-    participant_removed = False
+    # 3. Delete the session rows themselves.
     try:
         supabase.table("sessions").delete().eq("participant_code", code).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete sessions: {e}")
+
+    # 4. Delete the participant row. Check whether it existed first, so an
+    # already-absent row (nothing to delete) isn't mistaken for a failed
+    # delete — and so a real delete failure is never silently swallowed
+    # into a false "ok: true" the way it used to be.
+    participant_existed = False
     try:
-        result = supabase.table("research_participants").delete().eq("participant_id", participant_id).execute()
-        participant_removed = bool(result.data)
+        existing = (
+            supabase.table("research_participants")
+            .select("participant_id")
+            .eq("participant_id", participant_id)
+            .limit(1)
+            .execute()
+        )
+        participant_existed = bool(existing.data)
     except Exception as e:
-        print(f"[research] withdraw: participant row delete failed: {e}")
+        print(f"[research] withdraw: participant lookup failed: {e}")
+        errors.append(f"research_participants lookup: {e}")
+
+    participant_removed = not participant_existed
+    if participant_existed:
+        try:
+            result = (
+                supabase.table("research_participants")
+                .delete()
+                .eq("participant_id", participant_id)
+                .execute()
+            )
+            participant_removed = bool(result.data)
+            if not participant_removed:
+                errors.append("research_participants: delete returned no rows")
+        except Exception as e:
+            print(f"[research] withdraw: participant row delete failed: {e}")
+            errors.append(f"research_participants delete: {e}")
 
     return WithdrawResponse(
-        ok=True,
+        ok=len(errors) == 0,
         deleted_sessions=len(session_ids),
         participant_removed=participant_removed,
+        errors=errors,
     )
 
 
