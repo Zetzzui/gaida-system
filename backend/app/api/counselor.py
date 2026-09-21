@@ -805,13 +805,46 @@ def get_analytics_overview(user: dict = Depends(require_role("counselor"))):
         from app.database.database import supabase
         from datetime import timedelta
 
-        # Anxiety distribution from interactions
-        interactions = supabase.table("interactions").select("severity").execute()
-        severity_counts = {"Low": 0, "Moderate": 0, "High": 0, "Normal": 0}
+        # Anxiety distribution + monthly trends from interactions
+        interactions = supabase.table("interactions").select("severity, timestamp").execute()
+        severity_counts = {"Low": 0, "Moderate": 0, "High": 0, "Normal": 0, "Crisis": 0}
         for row in interactions.data:
             s = row.get("severity", "Normal") or "Normal"
             if s in severity_counts:
                 severity_counts[s] += 1
+
+        # Monthly anxiety trends — rolling 12 months ending now
+        def _shift_month(dt, months):
+            idx = dt.year * 12 + (dt.month - 1) + months
+            return datetime(idx // 12, idx % 12 + 1, 1)
+
+        now = datetime.utcnow()
+        months = [
+            {
+                "key": _shift_month(now, i - 11).strftime("%Y-%m"),
+                "month": _shift_month(now, i - 11).strftime("%b"),
+                "normal": 0,
+                "low": 0,
+                "moderate": 0,
+                "high": 0,
+                "crisis": 0,
+            }
+            for i in range(12)
+        ]
+        buckets = {m["key"]: m for m in months}
+        valid_severities = ("Normal", "Low", "Moderate", "High", "Crisis")
+        for row in interactions.data:
+            ts = row.get("timestamp")
+            s = row.get("severity")
+            if not ts or s not in valid_severities:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            key = dt.strftime("%Y-%m")
+            if key in buckets:
+                buckets[key][s.lower()] += 1
 
         # Sessions this week
         week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
@@ -833,9 +866,88 @@ def get_analytics_overview(user: dict = Depends(require_role("counselor"))):
             "anxiety_distribution": [
                 {"name": k, "value": v} for k, v in severity_counts.items() if v > 0
             ],
+            "monthly_trends": [
+                {k: m[k] for k in ("month", "normal", "low", "moderate", "high", "crisis")} for m in months
+            ],
             "sessions_this_week": [{"day": d, "count": week_data[d]} for d in days],
             "total_sessions": len(supabase.table("sessions").select("id").execute().data),
             "total_alerts": len(alerts.data),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/analytics/reports")
+def get_analytics_reports(user: dict = Depends(require_role("counselor"))):
+    try:
+        from app.database.database import supabase
+
+        # Sessions + alerts + severity counts per month — rolling 12 months
+        def _shift_month(dt, months):
+            idx = dt.year * 12 + (dt.month - 1) + months
+            return datetime(idx // 12, idx % 12 + 1, 1)
+
+        now = datetime.utcnow()
+        months = [
+            {
+                "key": _shift_month(now, i - 11).strftime("%Y-%m"),
+                "month": _shift_month(now, i - 11).strftime("%b"),
+                "sessions": 0,
+                "alerts": 0,
+                "normal": 0,
+                "low": 0,
+                "moderate": 0,
+                "high": 0,
+                "crisis": 0,
+            }
+            for i in range(12)
+        ]
+        buckets = {m["key"]: m for m in months}
+
+        def _count_by_month(rows, col):
+            for row in rows:
+                ts = row.get(col)
+                if not ts:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                key = dt.strftime("%Y-%m")
+                if key in buckets:
+                    buckets[key][col] += 1
+
+        _count_by_month(
+            supabase.table("sessions").select("created_at").execute().data, "created_at"
+        )
+        _count_by_month(
+            supabase.table("counselor_alerts").select("created_at").execute().data, "created_at"
+        )
+
+        # Monthly severity breakdown from interactions
+        interactions = supabase.table("interactions").select("severity, timestamp").execute()
+        valid_severities = ("Normal", "Low", "Moderate", "High", "Crisis")
+        for row in interactions.data:
+            ts = row.get("timestamp")
+            s = row.get("severity")
+            if not ts or s not in valid_severities:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            key = dt.strftime("%Y-%m")
+            if key in buckets:
+                buckets[key][s.lower()] += 1
+
+        return {
+            "monthly_reports": [
+                {
+                    k: m[k]
+                    for k in ("month", "sessions", "alerts", "normal", "low", "moderate", "high", "crisis")
+                }
+                for m in months
+            ],
         }
     except Exception as e:
         return {"error": str(e)}

@@ -71,15 +71,6 @@ const playAlertSound = () => {
   } catch (e) {}
 };
 
-// ── Mock chart data ───────────────────────────────────────────────────────────
-const anxietyTrendData = [
-  { month: 'Jan', low: 15, moderate: 45, high: 20 },
-  { month: 'Feb', low: 18, moderate: 50, high: 22 },
-  { month: 'Mar', low: 16, moderate: 53, high: 25 },
-  { month: 'Apr', low: 17, moderate: 51, high: 24 },
-  { month: 'May', low: 14, moderate: 55, high: 25 },
-];
-
 const NAV = [
   { id: 'overview',  label: 'Overview',         icon: '⊞' },
   { id: 'alerts',    label: 'Alerts',            icon: '⚠' },
@@ -109,6 +100,7 @@ function OverviewPage({ alerts, sessions }) {
     Moderate: '#f59e0b',
     High: '#ef4444',
     Normal: '#9ca3af',
+    Crisis: '#b91c1c',
   };
 
   const distributionData = analytics?.anxiety_distribution?.map(d => ({
@@ -118,6 +110,8 @@ function OverviewPage({ alerts, sessions }) {
     { name: 'Low', value: 0, color: '#22c55e' },
     { name: 'Moderate', value: 0, color: '#f59e0b' },
     { name: 'High', value: 0, color: '#ef4444' },
+    { name: 'Normal', value: 0, color: '#9ca3af' },
+    { name: 'Crisis', value: 0, color: '#b91c1c' },
   ];
 
   const weekData = analytics?.sessions_this_week || [
@@ -125,6 +119,11 @@ function OverviewPage({ alerts, sessions }) {
     { day: 'Wed', count: 0 }, { day: 'Thu', count: 0 }, { day: 'Fri', count: 0 },
     { day: 'Sat', count: 0 }, { day: 'Sun', count: 0 },
   ];
+
+  const trendData = analytics?.monthly_trends || [];
+  const hasTrendData = trendData.some(m =>
+    (m.normal || 0) + (m.low || 0) + (m.moderate || 0) + (m.high || 0) + (m.crisis || 0) > 0
+  );
   return (
     <div>
       <div className="mb-6">
@@ -153,17 +152,41 @@ function OverviewPage({ alerts, sessions }) {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Anxiety Level Trends</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={anxietyTrendData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Line type="monotone" dataKey="low" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="moderate" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="high" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          {!analytics ? (
+            <p className="text-xs text-gray-400 text-center py-8">Loading trends...</p>
+          ) : !hasTrendData ? (
+            <p className="text-xs text-gray-400 text-center py-8">No trend data yet — appears once students have sessions</p>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="normal" stroke="#9ca3af" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="low" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="moderate" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="high" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="crisis" stroke="#b91c1c" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-3 mt-3">
+                {[
+                  { label: 'Normal',  color: '#9ca3af' },
+                  { label: 'Low',     color: '#22c55e' },
+                  { label: 'Moderate', color: '#f59e0b' },
+                  { label: 'High',    color: '#ef4444' },
+                  { label: 'Crisis',  color: '#b91c1c' },
+                ].map(l => (
+                  <div key={l.label} className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} />
+                    <span className="text-xs text-gray-500">{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Sessions This Week</h3>
@@ -1131,6 +1154,18 @@ function DetectionPage() {
 
 // ── Reports Page ──────────────────────────────────────────────────────────────
 function ReportsPage() {
+  const [reports, setReports] = useState(null);
+
+  useEffect(() => {
+    apiFetch(`${BACKEND}/api/counselor/analytics/reports`)
+      .then(r => r.json())
+      .then(setReports)
+      .catch(() => {});
+  }, []);
+
+  const trendData = reports?.monthly_reports || [];
+  const hasTrendData = trendData.some(m => (m.sessions || 0) + (m.alerts || 0) > 0);
+
   return (
     <div>
       <div className="mb-6">
@@ -1139,23 +1174,61 @@ function ReportsPage() {
       </div>
       <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm mb-5">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Monthly Trends</h3>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={[
-            { month: 'Sep', sessions: 52, alerts: 8 },
-            { month: 'Oct', sessions: 58, alerts: 12 },
-            { month: 'Nov', sessions: 65, alerts: 15 },
-            { month: 'Dec', sessions: 62, alerts: 14 },
-            { month: 'Jan', sessions: 68, alerts: 18 },
-            { month: 'Feb', sessions: 72, alerts: 20 },
-          ]}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip />
-            <Line type="monotone" dataKey="sessions" stroke="#111827" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="alerts" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-          </LineChart>
-        </ResponsiveContainer>
+        {!reports ? (
+          <p className="text-xs text-gray-400 text-center py-8">Loading trends...</p>
+        ) : !hasTrendData ? (
+          <p className="text-xs text-gray-400 text-center py-8">No report data yet — appears once students have sessions</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <Tooltip />
+              <Line type="monotone" dataKey="sessions" stroke="#111827" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="alerts" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">Severity Breakdown by Month</h3>
+        {!reports ? (
+          <p className="text-xs text-gray-400 text-center py-8">Loading breakdown...</p>
+        ) : !hasTrendData ? (
+          <p className="text-xs text-gray-400 text-center py-8">No breakdown data yet — appears once students have sessions</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-2 pr-4 font-semibold text-gray-500">Month</th>
+                  <th className="text-right py-2 px-3 font-semibold text-gray-500">Sessions</th>
+                  <th className="text-right py-2 px-3 font-semibold text-gray-500">Alerts</th>
+                  <th className="text-right py-2 px-3 font-semibold" style={{ color: '#9ca3af' }}>Normal</th>
+                  <th className="text-right py-2 px-3 font-semibold" style={{ color: '#22c55e' }}>Low</th>
+                  <th className="text-right py-2 px-3 font-semibold" style={{ color: '#f59e0b' }}>Moderate</th>
+                  <th className="text-right py-2 px-3 font-semibold" style={{ color: '#ef4444' }}>High</th>
+                  <th className="text-right py-2 pl-3 font-semibold" style={{ color: '#b91c1c' }}>Crisis</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trendData.map((m, i) => (
+                  <tr key={i} className={i < trendData.length - 1 ? 'border-b border-gray-50' : ''}>
+                    <td className="py-2 pr-4 font-medium text-gray-900">{m.month}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{m.sessions || 0}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{m.alerts || 0}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{m.normal || 0}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{m.low || 0}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{m.moderate || 0}</td>
+                    <td className="py-2 px-3 text-right text-gray-600">{m.high || 0}</td>
+                    <td className="py-2 pl-3 text-right font-semibold text-gray-900">{m.crisis || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
