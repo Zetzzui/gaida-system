@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from dotenv import load_dotenv
 from typing import Dict, Any
@@ -17,11 +18,11 @@ _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_BASE = "ft:gpt-3.5-turbo-0125:personal::DqH2I32e"
 MAX_HISTORY_MESSAGES = 4
 TOKEN_LIMITS = {
-    "none":     80,
-    "low":      110,
+    "none":     100,
+    "low":      115,
     "moderate": 130,
-    "high":     100,
-    "crisis":   90,
+    "high":     85,
+    "crisis":   75,
     "venting":  100,
 }
 
@@ -74,8 +75,34 @@ CONTEXT AWARENESS:
 - If you already validated their feeling in a previous message, do NOT just validate again —
   move forward to normalize, reframe, or offer a grounding question.
 
+RESPONSE LENGTH:
+- Your replies have a strict length budget — always finish your sentence within it.
+- Never trail off mid-word or mid-clause. If a topic needs more room than you have
+  (e.g. explaining a concept), give the key point in 2-3 short sentences and offer
+  to go deeper if they want, rather than writing a longer answer that risks being
+  cut off before it's done.
+
 You are not a robot. You are GAIDA — and you genuinely care.
 """
+
+
+def _trim_to_complete_sentence(text: str) -> str:
+    """Safety net for when a reply still hits the token cap mid-sentence
+    despite the system-prompt instruction above: trims back to the end of
+    the last complete sentence so a response is never shown/stored ending
+    mid-word or mid-clause. Returns the text unchanged if it already ends
+    cleanly, or if no earlier sentence boundary exists (better to show the
+    full text than nothing at all)."""
+    if not text:
+        return text
+    trimmed = text.rstrip()
+    if trimmed and trimmed[-1] in ".!?\"'”’":
+        return trimmed
+    matches = list(re.finditer(r'[.!?]["\'”’]*(?:\s|$)', trimmed))
+    if not matches:
+        return trimmed
+    end = matches[-1].end()
+    return trimmed[:end].rstrip()
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -564,12 +591,17 @@ def generate_response_with_gpt(
         )
 
         content = None
+        finish_reason = None
         if hasattr(resp, "choices") and len(resp.choices) > 0:
             content = resp.choices[0].message.content
+            finish_reason = resp.choices[0].finish_reason
 
         if not content:
             logger.warning("GPT returned empty content")
             return {"response": None, "used": False}
+
+        if finish_reason == "length":
+            content = _trim_to_complete_sentence(content)
 
         return {"response": content.strip(), "used": True}
 
@@ -620,11 +652,15 @@ def stream_gpt_response(
         )
 
         full_text: list[str] = []
+        finish_reason = None
         for chunk in resp:
             delta = None
             if chunk and chunk.choices and len(chunk.choices) > 0:
-                piece = chunk.choices[0].delta
+                choice = chunk.choices[0]
+                piece = choice.delta
                 delta = piece.content if piece and piece.content else None
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
 
             if delta:
                 full_text.append(delta)
@@ -632,6 +668,17 @@ def stream_gpt_response(
 
         if not full_text:
             logger.warning("GPT stream returned empty response")
+        elif finish_reason == "length":
+            # Hit the token cap mid-sentence. The already-streamed tokens were
+            # shown live and can't be un-typed, but trim what gets returned
+            # (and therefore saved to session history / the counselor
+            # dashboard) so a reloaded conversation never shows a reply that
+            # stops mid-word. No corresponding "delta" is yielded — callers
+            # should only use this final (None, text) pair to update their
+            # stored full-text, not to render another chat bubble chunk.
+            trimmed = _trim_to_complete_sentence("".join(full_text))
+            if trimmed != "".join(full_text):
+                yield (None, trimmed)
 
     except RateLimitError:
         logger.error("OpenAI rate limit reached (stream)")

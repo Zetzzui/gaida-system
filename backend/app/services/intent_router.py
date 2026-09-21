@@ -455,9 +455,13 @@ def stream_analyze_intent(user_message: str, session_id: str | None = None, user
         anxiety_level=turn["anxiety_level"],
         counselor_protocol=gpt_protocol,
     ):
-        got_tokens = True
+        # A final (None, trimmed_text) pair can arrive after a truncated
+        # reply (see gpt_agent.stream_gpt_response) — it corrects what gets
+        # saved/finalized below without being a real chat chunk to render.
         response_text = full
-        yield {"type": "delta", "text": delta}
+        if delta:
+            got_tokens = True
+            yield {"type": "delta", "text": delta}
 
     if not got_tokens:
         logger.warning("GPT stream unavailable, using safe fallback response")
