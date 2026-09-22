@@ -149,6 +149,16 @@ gaida-system/
 
 `backend/app/database/database.py` raises `RuntimeError` at import time if any of the Supabase pair is missing. The GPT model is a hardcoded constant in `gpt_agent.py`: `ft:gpt-3.5-turbo-0125:personal::DqH2I32e`.
 
+**Optional notification env vars (best-effort — missing them never breaks the chat pipeline):**
+
+| Variable | Purpose |
+|---|---|
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | SMTP creds for crisis-alert emails |
+| `ALERT_FROM_EMAIL` | sender address (defaults to `SMTP_USER`) |
+| `COUNSELOR_ALERT_EMAILS` | comma-separated counselor recipients (initial alert + escalation re-notifies) |
+| `ESCALATION_EMAILS` | comma-separated supervisor/backup recipients added at the **overdue** stage |
+| `FRONTEND_URL` | base URL for the dashboard link inside alert emails |
+
 **Frontend (`frontend/.env`):**
 | Variable | Purpose |
 |---|---|
@@ -289,6 +299,11 @@ Backend-protected now — every `/api/counselor/*` route requires a bearer token
 - **Live sessions** — active sessions list incl. severity trend data; **chat takeover** (see §8.6).
 - **Session actions** — rate, write notes, resolve; query severity from score.
 - **`[NEW — UNCOMMITTED]` Silent-student welfare check**: High/Crisis sessions with **no student message for ≥ 30 minutes** are surfaced via `GET /api/counselor/sessions/welfare` instead of being auto-hidden by the active-session filter; `POST /api/counselor/sessions/welfare-checked` marks them handled (a `_WELFARE_CHECKED` set keeps re-polling from re-flagging) so the counselor follows up (the "silent student" gap from the audit).
+- **`[NEW]` Escalation deadline monitor (server-side, not just a badge):** a background daemon re-scans pending, unacknowledged **Crisis/High** alerts every 60 s and enforces deadlines — `warning` (10 min work / 5 off-hours), `urgent` (30 / 15), `overdue` (60 / 45). At urgent/overdue it **re-fires the counselor alert email** (deduplicated, every ≥ 30 min while still unacknowledged), marks `escalation_level` + `needs_supervisor=True` on the alert, and audit-logs each attempt on the alert (`notifications[]`). Acknowledging, taking over, or resolving the alert stops the loop. This closes the "escalation stops at the dashboard if nobody is logged in" gap.
+- **`[NEW]` Alert survival across restarts:** `ALERTS` (the dashboard's live source) is rehydrated from `counselor_alerts` **pending rows at startup** (and lazily on first read), so a restart can no longer make an unacknowledged crisis alert silently disappear from `/alerts`. Alert creation is also deduplicated against the DB, preventing duplicate rows + duplicate emails after a restart.
+- **`[NEW]` Welfare-check DB fallback:** `get_sessions_needing_welfare_check` re-flags High/Crisis sessions from the `sessions` table that aren't in memory (e.g. after a restart), so a silent at-risk student is never lost when the in-memory session dict resets. Also fixes the pre-existing naive-vs-aware datetime bug that silently skipped the in-memory scan.
+
+> **Action required:** run `backend/training/sql/2026_09_add_counselor_alert_escalation.sql` in the Supabase SQL editor. Until then the escalation monitor still works (re-notifies + marks state in memory); only the DB column sync is absent.
 
 ---
 
@@ -360,7 +375,7 @@ Backend-protected now — every `/api/counselor/*` route requires a bearer token
 
 ## 16. Known Limitations (be ready to say these out loud)
 
-1. `ACTIVE_TOKENS` and session state are in-memory → resets on deploy/restart (tokens die, ongoing sessions drop). Single-instance assumption.
+1. `ACTIVE_TOKENS` and session state are in-memory → resets on deploy/restart (tokens die, ongoing sessions drop). Single-instance assumption. **Mitigated for safety:** pending counselor alerts are rehydrated from `counselor_alerts` on startup and welfare checks have a DB fallback, so a crisis case is never invisible to the counselor after a restart.
 2. Voice accuracy is unproven until the labeled clips are run through `evaluate_acoustic.py`; Whisper `medium` is heavy for free-tier runtime.
 3. Login is hardcoded test credentials (plus Google for real @ue.edu.ph users) — no self-service registration yet (intended: counselor creates accounts).
 4. GAD-7 is research-flow-only, not a regular-session screening step.

@@ -3,9 +3,13 @@ Counselor API routes: alerts, live sessions, chat mirroring/typing indicators,
 counselor takeover/handoff, session notes, analytics, and PDF export.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Optional
+
+import re
+import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response as FastAPIResponse
@@ -44,6 +48,272 @@ SEVERITY_MAP = {
 # ---------------------------------------------------------------------------
 ALERTS: list[dict] = []
 TYPING_STATES: dict = {}  # { session_id: { "counselor": bool, "student": bool } }
+
+# ---------------------------------------------------------------------------
+# Escalation deadlines — enforced server-side (not just a dashboard badge) so
+# a Crisis/High alert that nobody has acknowledged keeps getting re-notified
+# and is marked overdue. Thresholds mirror the frontend's client-side timer.
+# ---------------------------------------------------------------------------
+ESCALATION_THRESHOLDS_MINUTES = {
+    "warning": {"work": 10, "off_hours": 5},
+    "urgent":  {"work": 30, "off_hours": 15},
+    "overdue": {"work": 60, "off_hours": 45},
+}
+ESCALATION_RE_NOTIFY_MINUTES = 30  # min between re-notification emails per alert
+
+_PENDING_HYDRATED = False            # have ALERTS been rehydrated from Supabase?
+_ESCALATION_MONITOR_STARTED = False  # background deadline thread started?
+_ESCALATION_STATE_PERSISTED: set = set()  # (session_id, level, needs_supervisor) already synced
+
+
+def _is_off_hours(now: datetime) -> bool:
+    return now.hour < 8 or now.hour >= 17 or now.weekday() >= 5
+
+
+def _parse_utc(value):
+    """Parse a timestamp (ISO string or datetime) into a timezone-aware UTC
+    datetime. Naive values are treated as UTC so age math never mixes naive
+    and aware datetimes (which previously raised TypeError). Tolerates both
+    styles seen in the wild: trailing "Z" or an explicit "+00:00" offset."""
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        s = str(value).strip()
+        if s.endswith("Z"):
+            # "…Z" → "…+00:00"; if an offset is already present, drop the Z.
+            s = s[:-1] + "+00:00" if not re.search(r"[+-]\d{2}:?\d{2}$", s[:-1]) else s[:-1]
+        dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _alert_age_minutes(alert: dict, now: datetime) -> int:
+    ts = alert.get("timestamp") or alert.get("created_at")
+    if not ts:
+        return 0
+    try:
+        return max(0, int((now - _parse_utc(ts)).total_seconds() // 60))
+    except (ValueError, TypeError):
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Alert persistence helpers — keep the in-memory ALERTS list (dashboard source
+# of truth) and the Supabase counselor_alerts table in agreement, and make
+# alerts survive a backend restart.
+# ---------------------------------------------------------------------------
+def _row_to_alert(row: dict) -> dict:
+    """Normalize a counselor_alerts DB row into the in-memory alert shape."""
+    return {
+        "timestamp": row.get("created_at") or (datetime.now(timezone.utc).isoformat() + "Z"),
+        "session_id": row.get("session_id"),
+        "user_id": row.get("user_id"),
+        "intent": row.get("intent"),
+        "anxiety_score": row.get("anxiety_score") or 0,
+        "severity": row.get("severity"),
+        "message": row.get("message") or "",
+        "last_message": row.get("message") or "",
+        "status": row.get("status") or "pending",
+        "counselor_took_over": bool(row.get("counselor_took_over")),
+        "acknowledged": bool(row.get("acknowledged")),
+        "acknowledged_at": row.get("acknowledged_at"),
+        "acknowledged_by": row.get("acknowledged_by"),
+        "deleted": bool(row.get("deleted")),
+        "deleted_at": row.get("deleted_at"),
+        "deleted_by": row.get("deleted_by"),
+        "escalation_level": row.get("escalation_level") or "normal",
+        "needs_supervisor": bool(row.get("needs_supervisor")),
+    }
+
+
+def _hydrate_alerts():
+    """Pull pending alerts from Supabase into the in-memory ALERTS list so a
+    backend restart can't make an unacknowledged Crisis/High alert vanish from
+    the counselor dashboard. Idempotent per process: runs at startup and
+    lazily on the first alerts read."""
+    global _PENDING_HYDRATED
+    if _PENDING_HYDRATED:
+        return
+    try:
+        from app.database.database import supabase
+
+        result = (
+            supabase.table("counselor_alerts")
+            .select("*")
+            .eq("status", "pending")
+            .execute()
+        )
+    except Exception as e:
+        print(f"[counselor] alert hydration skipped: {e}")
+        return
+
+    existing_ids = {a["session_id"] for a in ALERTS}
+    for row in result.data or []:
+        sid = row.get("session_id")
+        if not sid or sid in existing_ids:
+            continue
+        ALERTS.append(_row_to_alert(row))
+        existing_ids.add(sid)
+    _PENDING_HYDRATED = True
+    if result.data:
+        print(f"[counselor] rehydrated {len(result.data)} pending alert(s) from Supabase")
+
+
+def _find_pending_alert_in_db(session_id: str) -> Optional[dict]:
+    """Best-effort lookup of a pending DB alert for this session (used to avoid
+    duplicate rows/emails when the in-memory list was reset by a restart)."""
+    try:
+        from app.database.database import supabase
+
+        result = (
+            supabase.table("counselor_alerts")
+            .select("*")
+            .eq("session_id", session_id)
+            .eq("status", "pending")
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Escalation deadline monitor
+# ---------------------------------------------------------------------------
+def run_escalation_checks(now: Optional[datetime] = None) -> dict:
+    """Enforce alert escalation deadlines (server-side, not just a badge).
+
+    For every pending, unacknowledged Crisis/High alert: mark its
+    escalation_level (normal → warning → urgent → overdue), re-fire the
+    counselor email whenever it is urgent/overdue and hasn't been re-notified
+    recently, and flag overdue alerts as needing a supervisor. Keeps running
+    until the alert is acknowledged, handed over, or resolved."""
+    now = now or datetime.now(timezone.utc)
+    off = _is_off_hours(now)
+    bucket = "off_hours" if off else "work"
+    renotified = 0
+    overdue_now = 0
+    normal_reset = 0
+
+    for alert in ALERTS:
+        if alert.get("status") != "pending" or alert.get("acknowledged"):
+            if alert.get("escalation_level") not in (None, "normal") or alert.get("needs_supervisor"):
+                alert["escalation_level"] = "normal"
+                alert["needs_supervisor"] = False
+                normal_reset += 1
+                _persist_escalation_state(alert)
+            continue
+
+        if alert.get("severity") not in ("High", "Crisis"):
+            continue
+
+        age = _alert_age_minutes(alert, now)
+        warn_m = ESCALATION_THRESHOLDS_MINUTES["warning"][bucket]
+        urg_m = ESCALATION_THRESHOLDS_MINUTES["urgent"][bucket]
+        over_m = ESCALATION_THRESHOLDS_MINUTES["overdue"][bucket]
+
+        if age >= over_m:
+            level = "overdue"
+        elif age >= urg_m:
+            level = "urgent"
+        elif age >= warn_m:
+            level = "warning"
+        else:
+            level = "normal"
+
+        alert["escalation_level"] = level
+        alert["age_minutes"] = age
+        alert["is_off_hours"] = off
+
+        if level == "overdue":
+            alert["needs_supervisor"] = True
+            overdue_now += 1
+
+        if level in ("urgent", "overdue") and not _notified_recently(alert, now):
+            _notify_escalation(alert, level, off)
+            renotified += 1
+
+        _persist_escalation_state(alert)
+
+    return {
+        "checked": len(ALERTS),
+        "renotified": renotified,
+        "overdue": overdue_now,
+        "off_hours": off,
+        "reset": normal_reset,
+    }
+
+
+def _notified_recently(alert: dict, now: datetime) -> bool:
+    last = alert.get("last_escalation_email_at")
+    if not last:
+        return False
+    try:
+        return (now - _parse_utc(last)).total_seconds() < ESCALATION_RE_NOTIFY_MINUTES * 60
+    except (ValueError, TypeError):
+        return False
+
+
+def _notify_escalation(alert: dict, level: str, off_hours: bool):
+    try:
+        from app.services.notifications import send_escalation_email
+
+        ok = send_escalation_email(alert, level, off_hours=off_hours)
+    except Exception as e:
+        print(f"[counselor] escalation email failed: {e}")
+        ok = False
+
+    at = datetime.now(timezone.utc).isoformat() + "Z"
+    alert["last_escalation_email_at"] = at
+    alert.setdefault("notifications", []).append(
+        {"at": at, "level": level, "channel": "email", "outcome": "sent" if ok else "failed"}
+    )
+    alert["notifications"] = alert["notifications"][-20:]
+
+
+def _persist_escalation_state(alert: dict):
+    """Best-effort, throttled sync of escalation state to Supabase so the
+    dashboard can trust server state after a restart. Column-missing errors
+    are non-fatal (same policy as the acknowledge handler)."""
+    key = (alert["session_id"], alert.get("escalation_level"), bool(alert.get("needs_supervisor")))
+    if key in _ESCALATION_STATE_PERSISTED:
+        return
+    try:
+        from app.database.database import supabase
+
+        supabase.table("counselor_alerts").update(
+            {
+                "escalation_level": alert.get("escalation_level") or "normal",
+                "needs_supervisor": bool(alert.get("needs_supervisor")),
+                "age_minutes": alert.get("age_minutes") or 0,
+            }
+        ).eq("session_id", alert["session_id"]).execute()
+        _ESCALATION_STATE_PERSISTED.add(key)
+    except Exception:
+        # Column may not exist yet in Supabase — visibility/email still work.
+        pass
+
+
+def _start_escalation_monitor(interval_seconds: int = 60):
+    """Daemon background loop enforcing escalation deadlines. Single-process
+    (matches the documented single-instance deployment assumption)."""
+    global _ESCALATION_MONITOR_STARTED
+    if _ESCALATION_MONITOR_STARTED:
+        return
+    _ESCALATION_MONITOR_STARTED = True
+
+    def _loop():
+        while True:
+            try:
+                run_escalation_checks()
+            except Exception as e:
+                print(f"[counselor] escalation check error: {e}")
+            time.sleep(interval_seconds)
+
+    threading.Thread(target=_loop, name="gaida-escalation-monitor", daemon=True).start()
+    print("[counselor] escalation deadline monitor started")
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +409,14 @@ def process_alert(
 
     if should_alert_counselor(severity):
         existing = next((a for a in ALERTS if a["session_id"] == session_id), None)
+        if existing is None:
+            # The in-memory list may be empty after a restart — reuse a
+            # pending alert that already exists in the DB for this session
+            # instead of creating a duplicate row + duplicate email.
+            db_row = _find_pending_alert_in_db(session_id)
+            if db_row:
+                existing = _row_to_alert(db_row)
+                ALERTS.append(existing)
 
         if existing:
             existing["last_message"] = message
@@ -255,11 +533,13 @@ def rate_session(payload: SessionRating, user: dict = Depends(get_current_user))
 
 @router.get("/alerts")
 def get_alerts(user: dict = Depends(require_role("counselor"))):
+    _hydrate_alerts()
     return {"alerts": ALERTS, "count": len(ALERTS)}
 
 
 @router.get("/alerts/pending")
 def get_pending_alerts(user: dict = Depends(require_role("counselor"))):
+    _hydrate_alerts()
     pending = [a for a in ALERTS if a.get("status") == "pending"]
     return {"alerts": pending, "count": len(pending)}
 
@@ -330,6 +610,12 @@ def request_counselor(payload: CounselorRequest, user: dict = Depends(get_curren
     require_session_owner(payload.session_id, user)
     try:
         existing = next((a for a in ALERTS if a["session_id"] == payload.session_id), None)
+        if existing is None:
+            db_row = _find_pending_alert_in_db(payload.session_id)
+            if db_row:
+                existing = _row_to_alert(db_row)
+                ALERTS.append(existing)
+
         if existing:
             existing["last_message"] = payload.message
             existing["timestamp"] = datetime.utcnow().isoformat() + "Z"
@@ -805,13 +1091,46 @@ def get_analytics_overview(user: dict = Depends(require_role("counselor"))):
         from app.database.database import supabase
         from datetime import timedelta
 
-        # Anxiety distribution from interactions
-        interactions = supabase.table("interactions").select("severity").execute()
-        severity_counts = {"Low": 0, "Moderate": 0, "High": 0, "Normal": 0}
+        # Anxiety distribution + monthly trends from interactions
+        interactions = supabase.table("interactions").select("severity, timestamp").execute()
+        severity_counts = {"Low": 0, "Moderate": 0, "High": 0, "Normal": 0, "Crisis": 0}
         for row in interactions.data:
             s = row.get("severity", "Normal") or "Normal"
             if s in severity_counts:
                 severity_counts[s] += 1
+
+        # Monthly anxiety trends — rolling 12 months ending now
+        def _shift_month(dt, months):
+            idx = dt.year * 12 + (dt.month - 1) + months
+            return datetime(idx // 12, idx % 12 + 1, 1)
+
+        now = datetime.utcnow()
+        months = [
+            {
+                "key": _shift_month(now, i - 11).strftime("%Y-%m"),
+                "month": _shift_month(now, i - 11).strftime("%b"),
+                "normal": 0,
+                "low": 0,
+                "moderate": 0,
+                "high": 0,
+                "crisis": 0,
+            }
+            for i in range(12)
+        ]
+        buckets = {m["key"]: m for m in months}
+        valid_severities = ("Normal", "Low", "Moderate", "High", "Crisis")
+        for row in interactions.data:
+            ts = row.get("timestamp")
+            s = row.get("severity")
+            if not ts or s not in valid_severities:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            key = dt.strftime("%Y-%m")
+            if key in buckets:
+                buckets[key][s.lower()] += 1
 
         # Sessions this week
         week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
@@ -833,9 +1152,88 @@ def get_analytics_overview(user: dict = Depends(require_role("counselor"))):
             "anxiety_distribution": [
                 {"name": k, "value": v} for k, v in severity_counts.items() if v > 0
             ],
+            "monthly_trends": [
+                {k: m[k] for k in ("month", "normal", "low", "moderate", "high", "crisis")} for m in months
+            ],
             "sessions_this_week": [{"day": d, "count": week_data[d]} for d in days],
             "total_sessions": len(supabase.table("sessions").select("id").execute().data),
             "total_alerts": len(alerts.data),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/analytics/reports")
+def get_analytics_reports(user: dict = Depends(require_role("counselor"))):
+    try:
+        from app.database.database import supabase
+
+        # Sessions + alerts + severity counts per month — rolling 12 months
+        def _shift_month(dt, months):
+            idx = dt.year * 12 + (dt.month - 1) + months
+            return datetime(idx // 12, idx % 12 + 1, 1)
+
+        now = datetime.utcnow()
+        months = [
+            {
+                "key": _shift_month(now, i - 11).strftime("%Y-%m"),
+                "month": _shift_month(now, i - 11).strftime("%b"),
+                "sessions": 0,
+                "alerts": 0,
+                "normal": 0,
+                "low": 0,
+                "moderate": 0,
+                "high": 0,
+                "crisis": 0,
+            }
+            for i in range(12)
+        ]
+        buckets = {m["key"]: m for m in months}
+
+        def _count_by_month(rows, col):
+            for row in rows:
+                ts = row.get(col)
+                if not ts:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                key = dt.strftime("%Y-%m")
+                if key in buckets:
+                    buckets[key][col] += 1
+
+        _count_by_month(
+            supabase.table("sessions").select("created_at").execute().data, "created_at"
+        )
+        _count_by_month(
+            supabase.table("counselor_alerts").select("created_at").execute().data, "created_at"
+        )
+
+        # Monthly severity breakdown from interactions
+        interactions = supabase.table("interactions").select("severity, timestamp").execute()
+        valid_severities = ("Normal", "Low", "Moderate", "High", "Crisis")
+        for row in interactions.data:
+            ts = row.get("timestamp")
+            s = row.get("severity")
+            if not ts or s not in valid_severities:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            key = dt.strftime("%Y-%m")
+            if key in buckets:
+                buckets[key][s.lower()] += 1
+
+        return {
+            "monthly_reports": [
+                {
+                    k: m[k]
+                    for k in ("month", "sessions", "alerts", "normal", "low", "moderate", "high", "crisis")
+                }
+                for m in months
+            ],
         }
     except Exception as e:
         return {"error": str(e)}

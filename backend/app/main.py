@@ -55,6 +55,16 @@ def prewarm():
     except Exception as e:
         print(f"[startup] Supabase warm skipped: {e}")
 
+    # 3. Rehydrate pending counselor alerts so no alert disappears on restart,
+    #    and start the escalation-deadline monitor that re-notifies
+    #    unacknowledged Crisis/High alerts until a human responds.
+    try:
+        from app.api.counselor import _hydrate_alerts, _start_escalation_monitor
+        _hydrate_alerts()
+        _start_escalation_monitor()
+    except Exception as e:
+        print(f"[startup] escalation monitor start skipped: {e}")
+
 
 # ----------------------------
 # Routers

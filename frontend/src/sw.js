@@ -8,7 +8,7 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-const CACHE_VERSION = "gaida-v1";
+const CACHE_VERSION = "gaida-v2";
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const DATA_CACHE    = `${CACHE_VERSION}-data`;
 const QUEUE_STORE   = "gaida-offline-queue";
@@ -44,15 +44,23 @@ const QUEUEABLE_ROUTES = [
 ];
 
 
-// ═════════════════════════════════════════════════════════════
-// INSTALL — cache app shell
-// ═════════════════════════════════════════════════════════════
+// ── Install — cache app shell + precache build assets ─────────
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => {
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE);
       console.log("[GAIDA SW] Caching app shell...");
-      return cache.addAll(APP_SHELL_FILES);
-    })
+      await cache.addAll(APP_SHELL_FILES);
+      // Precache the hashed build assets listed in __WB_MANIFEST so the
+      // app is fully usable offline from the very first visit. Failures
+      // are tolerated individually so one 404 can't break installation.
+      const precacheUrls = (WB_MANIFEST).map((entry) =>
+        typeof entry === "string" ? entry : entry.url
+      );
+      if (precacheUrls.length) {
+        await Promise.allSettled(precacheUrls.map((url) => cache.add(url)));
+      }
+    })()
   );
   self.skipWaiting();
 });
@@ -84,16 +92,20 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
-  if (url.hostname === '127.0.0.1' || 
-      url.hostname.includes('onrender.com')) {
-    event.respondWith(fetch(request));
-    return;
-  }
+
+  // Engage the SW for:
+  //   • same-origin requests (app shell, JS/CSS assets, navigation)
+  //   • GAIDA backend API calls, matched by PATHNAME so it works no
+  //     matter where the backend is hosted (localhost, Render, etc.)
+  // Everything else (foreign origins like Google scripts, fonts, Supabase)
+  // passes through untouched — never cache-first'd.
+  const isSameOrigin = url.origin === self.location.origin;
+  const isApiRoute   = API_CACHE_ROUTES.some((route) => url.pathname.includes(route));
+  const isQueueable  = QUEUEABLE_ROUTES.some((route) => url.pathname.includes(route));
+  if (!isSameOrigin && !isApiRoute && !isQueueable) return;
 
   // Skip non-GET requests that aren't queueable API calls
   if (request.method === "POST") {
-    const isQueueable = QUEUEABLE_ROUTES.some((route) => url.pathname.includes(route));
     if (isQueueable) {
       event.respondWith(handleQueueablePost(request));
       return;
@@ -104,7 +116,6 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   // API data routes — network first, cache fallback
-  const isApiRoute = API_CACHE_ROUTES.some((route) => url.pathname.includes(route));
   if (isApiRoute) {
     event.respondWith(networkFirstWithCache(request));
     return;
@@ -224,6 +235,18 @@ async function handleQueueablePost(request) {
 // ═════════════════════════════════════════════════════════════
 self.addEventListener("sync", (event) => {
   if (event.tag === "gaida-sync-messages") {
+    event.waitUntil(flushMessageQueue());
+  }
+});
+
+
+// ═════════════════════════════════════════════════════════════
+// FALLBACK FLUSH — browsers without Background Sync (iOS Safari)
+// The page posts a FLUSH_QUEUE message when it reconnects.
+// ═════════════════════════════════════════════════════════════
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data.type === "FLUSH_QUEUE" && typeof event.waitUntil === "function") {
     event.waitUntil(flushMessageQueue());
   }
 });

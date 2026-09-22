@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Callable
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import uuid
 from app.database.database import supabase
 import asyncio
@@ -11,6 +11,10 @@ SESSIONS: Dict[str, Dict[str, Any]] = {}
 SESSION_STALE_MINUTES = 30  # sessions with no activity in this window are excluded from "active"
 WELFARE_CHECK_MINUTES = 30  # a High/Crisis session silent for this long is flagged for welfare check
 _SUBSCRIBERS: List[Callable] = []
+
+# Welfare-check DB fallback throttle (the dashboard polls this endpoint).
+_WELFARE_DB_LAST_SCAN = datetime.fromtimestamp(0, tz=timezone.utc)
+_WELFARE_DB_SCAN_MIN = timedelta(minutes=1)
 
 # Single worker so DB/file writes never block the chat response AND are
 # serialized (avoids swallowing writes from concurrent messages).
@@ -298,14 +302,39 @@ def list_active_sessions():
         result.append(s)
     return result
 
+def _parse_utc_aware(value):
+    """Parse any stored timestamp to a timezone-aware UTC datetime. Naive values
+    are treated as UTC. (The old code subtracted a naive `now` from an aware
+    parsed timestamp, which raised TypeError and silently skipped every session.)"""
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        import re as _re
+
+        s = str(value).strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00" if not _re.search(r"[+-]\d{2}:?\d{2}$", s[:-1]) else s[:-1]
+        dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def get_sessions_needing_welfare_check(stale_minutes: int = WELFARE_CHECK_MINUTES) -> List[Dict[str, Any]]:
     """At-risk students who went silent: sessions whose peak severity reached
     High/Crisis and have had no activity for `stale_minutes` or more.
     Surfaces these to a counselor so a human welfare check happens instead of
     simply hiding the session as "abandoned" (which is all SESSION_STALE_MINUTES
-    did before)."""
-    now = datetime.utcnow()
+    did before).
+
+    The live scan only sees sessions still in memory, so a DB fallback
+    re-flags High/Crisis sessions from Supabase that aren't in memory (e.g.
+    after a backend restart) — a silent at-risk student is never lost."""
+    now = datetime.now(timezone.utc)
     flagged: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    # ── Live (in-memory) scan ──────────────────────────────────────────────
     for sid, s in SESSIONS.items():
         if not s.get("active"):
             continue
@@ -322,10 +351,10 @@ def get_sessions_needing_welfare_check(stale_minutes: int = WELFARE_CHECK_MINUTE
         if not last_ts:
             continue
         try:
-            last_dt = datetime.fromisoformat(str(last_ts).replace("Z", "+00:00"))
-            idle_minutes = (now - last_dt).total_seconds() / 60
+            last_dt = _parse_utc_aware(last_ts)
         except (ValueError, TypeError):
             continue
+        idle_minutes = (now - last_dt).total_seconds() / 60
         if idle_minutes >= stale_minutes:
             flagged.append({
                 "session_id": sid,
@@ -334,6 +363,66 @@ def get_sessions_needing_welfare_check(stale_minutes: int = WELFARE_CHECK_MINUTE
                 "idle_minutes": round(idle_minutes),
                 "last_message": (s["messages"][-1].get("text", "") if s.get("messages") else ""),
             })
+            seen.add(sid)
+
+    # ── DB fallback (sessions not in memory, e.g. after restart) ───────────
+    # Throttled so the dashboard's polling doesn't hammer Supabase.
+    global _WELFARE_DB_LAST_SCAN
+    if now - _WELFARE_DB_LAST_SCAN < _WELFARE_DB_SCAN_MIN:
+        return flagged
+    _WELFARE_DB_LAST_SCAN = now
+
+    try:
+        from app.database.database import supabase
+
+        rows = (
+            supabase.table("sessions")
+            .select("session_token, student_id, peak_severity, created_at")
+            .in_("peak_severity", ["High", "Crisis"])
+            .is_("ended_at", "null")
+            .execute()
+        ).data or []
+        for row in rows:
+            sid = row.get("session_token")
+            if not sid or sid in seen or sid in SESSIONS:
+                continue
+            sev = row.get("peak_severity") or "High"
+            last_msg = ""
+            last_ts = row.get("created_at")
+            try:
+                last_rows = (
+                    supabase.table("interactions")
+                    .select("timestamp, message")
+                    .eq("session_id", sid)
+                    .order("timestamp", desc=True)
+                    .limit(1)
+                    .execute()
+                ).data or []
+                if last_rows:
+                    last_ts = last_rows[0].get("timestamp") or last_ts
+                    last_msg = last_rows[0].get("message") or last_msg
+            except Exception:
+                last_msg = ""
+            if not last_ts:
+                continue
+            try:
+                last_dt = _parse_utc_aware(last_ts)
+            except (ValueError, TypeError):
+                continue
+            idle_minutes = (now - last_dt).total_seconds() / 60
+            if idle_minutes >= stale_minutes:
+                flagged.append({
+                    "session_id": sid,
+                    "student_id": row.get("student_id"),
+                    "peak_severity": sev,
+                    "idle_minutes": round(idle_minutes),
+                    "last_message": last_msg,
+                    "from_db": True,
+                })
+                seen.add(sid)
+    except Exception as e:
+        print(f"Welfare DB fallback error: {e}")
+
     return flagged
 
 def end_session(session_id: str):
