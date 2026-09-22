@@ -653,7 +653,7 @@ export default function StudentDashboard() {
   // ─────────────────────────────────────────────────────────────
   return (
     <div
-      className="min-h-screen max-h-screen flex overflow-hidden font-sans"
+      className="min-h-dvh max-h-dvh flex overflow-hidden font-sans"
       style={{ background: theme.bg }}
     >
       {/* Mobile overlay */}
@@ -671,7 +671,7 @@ export default function StudentDashboard() {
           fixed lg:relative z-30 lg:z-auto top-0 left-0
           transition-transform duration-300 ease-in-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          w-64 flex flex-col flex-shrink-0 h-full min-h-screen
+          w-64 flex flex-col flex-shrink-0 h-full min-h-dvh
         `}
         style={{ background: theme.sidebar, borderRight: `1px solid ${theme.border}` }}
       >
@@ -868,12 +868,17 @@ export default function StudentDashboard() {
       </aside>
 
       {/* ── Main ─────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen">
+      <div className="flex-1 flex flex-col min-w-0 h-dvh">
 
         {/* Topbar */}
         <div
           className="h-14 flex items-center px-4 gap-3 flex-shrink-0"
-          style={{ background: theme.sidebar, borderBottom: `1px solid ${theme.border}` }}
+          style={{
+            background: theme.sidebar,
+            borderBottom: `1px solid ${theme.border}`,
+            paddingTop: 'env(safe-area-inset-top)',
+            height: 'calc(3.5rem + env(safe-area-inset-top))',
+          }}
         >
           <button
             onClick={() => setSidebarOpen(p => !p)}
@@ -1001,8 +1006,12 @@ export default function StudentDashboard() {
 
         {/* Input */}
         <div
-          className="px-3 sm:px-4 py-3 flex-shrink-0"
-          style={{ background: theme.sidebar, borderTop: `1px solid ${theme.border}` }}
+          className="px-3 sm:px-4 pt-3 flex-shrink-0"
+          style={{
+            background: theme.sidebar,
+            borderTop: `1px solid ${theme.border}`,
+            paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+          }}
         >
           <div
             className="flex items-end gap-2 rounded-2xl px-3 py-2"
@@ -1015,7 +1024,7 @@ export default function StudentDashboard() {
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               rows={1}
-              className="flex-1 resize-none py-1 text-sm leading-relaxed focus:outline-none"
+              className="flex-1 resize-none py-1 text-base sm:text-sm leading-relaxed focus:outline-none"
               style={{ minHeight: '32px', maxHeight: '96px', background: 'transparent', color: theme.textPrimary }}
             />
             <div className="flex items-center gap-1.5 flex-shrink-0 pb-0.5">
@@ -1025,7 +1034,7 @@ export default function StudentDashboard() {
                 onStatusChange={setVoiceStatus}
               />
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
                 className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0"
                 style={

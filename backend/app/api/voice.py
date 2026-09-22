@@ -100,8 +100,28 @@ async def speech_to_text(
             print(f"DEBUG: Acoustic features saved to session {session_id}")
 
         # --- Step 3: Transcription (hosted OpenAI) ---
-        # .webm suffix so the API's ffmpeg decodes any browser format safely
-        suffix = ".webm"
+        # The upload's real container varies by platform: Android/desktop
+        # browsers record audio/webm, iOS Safari (14.3+, including the
+        # installed PWA) only supports audio/mp4. OpenAI's transcription
+        # API keys off the filename extension, so mismatching it against
+        # the actual container (e.g. always claiming ".webm" for an
+        # mp4-encoded iPhone recording) makes transcription fail on iOS.
+        # Derive the extension from what the browser actually sent.
+        _EXT_BY_CONTENT_TYPE = {
+            "audio/webm": "webm",
+            "audio/mp4": "mp4",
+            "audio/aac": "aac",
+            "audio/ogg": "ogg",
+            "audio/wav": "wav",
+            "audio/mpeg": "mp3",
+        }
+        upload_name = (audio.filename or "").lower()
+        if "." in upload_name:
+            ext = upload_name.rsplit(".", 1)[-1]
+        else:
+            base_type = content_type.split(";")[0].strip().lower()
+            ext = _EXT_BY_CONTENT_TYPE.get(base_type, "webm")
+        suffix = f".{ext}"
         tmp_path = None
 
         try:
@@ -115,7 +135,7 @@ async def speech_to_text(
                 result = await asyncio.to_thread(
                     _get_voice_client().audio.transcriptions.create,
                     model=_STT_MODEL,
-                    file=("audio.webm", f),
+                    file=(f"audio{suffix}", f),
                 )
             transcript = getattr(result, "text", "").strip()
             print(f"DEBUG: Transcription complete: '{transcript}'")

@@ -106,8 +106,24 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
     }
 
     try {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      // Pick the first mimeType this browser's MediaRecorder actually supports.
+      // Android Chrome/Firefox support audio/webm; iOS Safari (14.3+, including
+      // the installed PWA on iPhone) only supports audio/mp4 — it does NOT
+      // support webm or ogg, so a webm/ogg-only fallback throws on iOS and
+      // recording silently fails there. Falling through to "" lets the
+      // browser pick its own default rather than throwing.
+      const MIME_CANDIDATES = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/mp4;codecs=mp4a.40.2",
+        "audio/aac",
+        "audio/ogg",
+      ];
+      const mimeType = MIME_CANDIDATES.find(t => window.MediaRecorder?.isTypeSupported?.(t)) || "";
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream); // let the browser pick a default as a last resort
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (e) => {
@@ -177,8 +193,16 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
       const blob = new Blob(chunksRef.current, { type: mimeType });
       chunksRef.current = [];
 
+      // Give the backend a filename extension that matches the actual
+      // recorded container (mp4 on iOS Safari, webm on Android/desktop)
+      // so its ffmpeg/Whisper decoding doesn't mismatch the real format.
+      const ext = mimeType.includes("mp4") ? "mp4"
+        : mimeType.includes("ogg") ? "ogg"
+        : mimeType.includes("aac") ? "aac"
+        : "webm";
+
       const formData = new FormData();
-      formData.append("audio", blob, "recording.webm");
+      formData.append("audio", blob, `recording.${ext}`);
       if (sessionId) formData.append("session_id", sessionId);
 
       const res = await apiFetch(`${BACKEND_URL}/audio/speech-to-text`, {

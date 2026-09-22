@@ -74,9 +74,23 @@ ALLOWED_ORIGINS = [
     "https://gaida-system.vercel.app",
 ]
 
+# Also allow the Vite dev server when it's reached over the local network
+# (e.g. http://192.168.1.23:5173) — this is what lets a phone on the same
+# Wi-Fi test against `npm run dev -- --host` without editing this list by
+# hand every time your PC's LAN IP changes. Private ranges only (RFC 1918),
+# so this never opens CORS to the public internet.
+_LAN_ORIGIN_REGEX = (
+    r"^http://("
+    r"192\.168\.\d{1,3}\.\d{1,3}"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+    r"):5173$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=_LAN_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

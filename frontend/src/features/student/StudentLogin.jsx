@@ -164,7 +164,7 @@ export default function StudentLogin() {
   // Helper for dynamic border colors
   const getInputClasses = (fieldId) => {
     const baseClasses =
-      'w-full px-3 py-2 text-sm bg-gray-50 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-1 transition-colors';
+      'w-full px-3 py-2 text-base sm:text-sm bg-gray-50 border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-1 transition-colors';
     const errorClasses = 'border-red-500 ring-red-100 focus:border-red-500';
     const normalClasses = 'border-gray-200 focus:border-red-500 focus:ring-red-100';
     return `${baseClasses} ${fieldErrors[fieldId] ? errorClasses : normalClasses}`;
