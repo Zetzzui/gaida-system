@@ -53,9 +53,17 @@ const confidenceToSeverity = (c) => {
 };
 
 // ── Alert sound ───────────────────────────────────────────────────────────────
+// Reuse a single AudioContext instead of constructing one per call — the old
+// code spawned a new context on every beep, which browsers eventually gag on
+// (and some throw "too many AudioContexts").
+let _alertAudioCtx = null;
 const playAlertSound = () => {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!_alertAudioCtx) _alertAudioCtx = new Ctx();
+    const ctx = _alertAudioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
     [0, 150, 300].forEach((delay) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -71,6 +79,41 @@ const playAlertSound = () => {
   } catch (e) {}
 };
 
+// Which counselor is signed in (matches what /takeover uses).
+const getCounselorId = () => {
+  try {
+    const d = JSON.parse(localStorage.getItem('counselorData') || '{}');
+    return d.id || d.student_number || null;
+  } catch {
+    return null;
+  }
+};
+
+// Authenticated PDF export fallback for the Resolved Cases page — a bare
+// window.open() can't carry the Bearer token, so it always got a 401.
+const downloadSessionPdf = async (sessionId) => {
+  try {
+    const res = await apiFetch(`${BACKEND}/api/counselor/export-session/${sessionId}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Export failed');
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `GAIDA_Session_${sessionId.slice(0, 8)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
+  } catch (e) {
+    alert(e.message || 'Could not export PDF.');
+    return false;
+  }
+};
+
 const NAV = [
   { id: 'overview',  label: 'Overview',         icon: '⊞' },
   { id: 'alerts',    label: 'Alerts',            icon: '⚠' },
@@ -84,12 +127,19 @@ const NAV = [
 // ── Overview Page ─────────────────────────────────────────────────────────────
 function OverviewPage({ alerts, sessions }) {
   const [analytics, setAnalytics] = useState(null);
+  const [analyticsError, setAnalyticsError] = useState('');
 
   useEffect(() => {
     apiFetch(`${BACKEND}/api/counselor/analytics/overview`)
       .then(r => r.json())
-      .then(setAnalytics)
-      .catch(() => {});
+      .then(data => {
+        if (data && data.error) {
+          setAnalyticsError(String(data.error));
+        } else {
+          setAnalytics(data);
+        }
+      })
+      .catch(() => setAnalyticsError('Analytics are unavailable right now.'));
   }, []);
 
   const pending = alerts.filter(a => a.status === 'pending').length;
@@ -149,6 +199,11 @@ function OverviewPage({ alerts, sessions }) {
           </div>
         ))}
       </div>
+      {analyticsError && (
+        <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          Could not load analytics: {analyticsError}
+        </div>
+      )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Anxiety Level Trends</h3>
@@ -259,7 +314,10 @@ const getEscalationState = (a) => {
   if (a.escalation_level) {
     return { level: a.escalation_level, ageMinutes: a.age_minutes ?? 0, isOffHours: !!a.is_off_hours };
   }
-  const timestamp = a.timestamp;
+  // Server not stamped yet (fresh alert, up to the monitor's next tick) —
+  // approximate from the age anchor. first_alerted_at is the frozen creation
+  // time; timestamp is refreshed on every student message.
+  const timestamp = a.first_alerted_at || a.timestamp;
   const now = Date.now();
   const alertTime = new Date(timestamp).getTime();
   const ageMinutes = Math.floor((now - alertTime) / 60000);
@@ -268,151 +326,144 @@ const getEscalationState = (a) => {
   const day = new Date().getDay();
   const isOffHours = hour < 8 || hour >= 17 || day === 0 || day === 6;
 
-  const warnThreshold  = isOffHours ? 5  : 10;
-  const urgentThreshold = isOffHours ? 15 : 30;
+  const warnThreshold    = isOffHours ? 5  : 10;
+  const urgentThreshold  = isOffHours ? 15 : 30;
+  const overdueThreshold = isOffHours ? 45 : 60;
 
-  if (ageMinutes >= urgentThreshold) return { level: 'urgent',  ageMinutes, isOffHours };
-  if (ageMinutes >= warnThreshold)   return { level: 'warning', ageMinutes, isOffHours };
+  if (ageMinutes >= overdueThreshold) return { level: 'overdue',  ageMinutes, isOffHours };
+  if (ageMinutes >= urgentThreshold)  return { level: 'urgent',   ageMinutes, isOffHours };
+  if (ageMinutes >= warnThreshold)    return { level: 'warning',  ageMinutes, isOffHours };
   return { level: 'normal', ageMinutes, isOffHours };
 };
 
 
-function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
-  const [now, setNow] = useState(Date.now());
+// ── Alert Row ─────────────────────────────────────────────────────────────────
+// Defined at module scope (not inside AlertsPage) so the 2-second polling
+// re-render doesn't remount every row and drop mid-click button presses.
+function AlertRow({ a, onViewChat, onUpdateStatus, onAcknowledge }) {
+  const sc  = severityColor(a.severity);
+  const esc = getEscalationState(a);
+  const needsAck = a.severity === 'High' || a.severity === 'Crisis';
+  // An escalated alert is one a counselor took over — it still needs the
+  // same Acknowledge → Mark Reviewed flow, otherwise it deadlocks forever
+  // (previous code only showed the buttons for status === 'pending').
+  const actionable = a.status === 'pending' || a.status === 'escalated';
 
-  // Tick every 30 seconds to update escalation states
+  const borderColor =
+    esc.level === 'overdue' ? 'border-red-700' :
+    esc.level === 'urgent'  ? 'border-red-500' :
+    esc.level === 'warning' ? 'border-amber-400' :
+    a.severity === 'High' || a.severity === 'Crisis' ? 'border-red-500' :
+    a.severity === 'Requested' ? 'border-blue-500' :
+    'border-amber-400';
+
+  const bgColor =
+    esc.level === 'overdue' ? 'bg-red-100' :
+    esc.level === 'urgent'  ? 'bg-red-50' :
+    esc.level === 'warning' ? 'bg-amber-50' :
+    a.severity === 'High' || a.severity === 'Crisis' ? 'bg-red-50' :
+    a.severity === 'Requested' ? 'bg-blue-50' :
+    'bg-amber-50';
+
+  return (
+    <div className={`p-4 border-l-4 ${borderColor} ${bgColor} rounded-r-xl mb-3 ${
+      esc.level === 'urgent' ? 'ring-1 ring-red-300 ring-offset-1' : ''
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.bg} ${sc.text}`}>{a.severity}</span>
+            <span className="text-xs text-gray-500">{a.intent}</span>
+            <span className="text-xs text-gray-400">{formatRelative(a.timestamp)}</span>
+
+            {/* Escalation badge */}
+            {esc.level === 'overdue' && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-700 text-white animate-pulse">
+                🚨 OVERDUE {esc.ageMinutes}m
+              </span>
+            )}
+            {esc.level === 'urgent' && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-600 text-white animate-pulse">
+                ⚠ Unattended {esc.ageMinutes}m
+              </span>
+            )}
+            {esc.level === 'warning' && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500 text-white">
+                Waiting {esc.ageMinutes}m+
+              </span>
+            )}
+
+            {/* Needs-supervisor badge (alert passed the overdue deadline) */}
+            {a.needs_supervisor && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-gray-900 text-white">
+                Needs supervisor
+              </span>
+            )}
+
+            {/* Off-hours tag */}
+            {esc.isOffHours && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-700 text-gray-200">
+                Off-hours
+              </span>
+            )}
+          </div>
+          <p className="text-xs font-semibold text-gray-700 mb-1">Session: {a.session_id.slice(0, 16)}...</p>
+          <p className="text-xs text-gray-600 truncate">"{a.message}"</p>
+          {a.acknowledged && (
+            <p className="text-xs text-green-700 mt-1">
+              ✓ Acknowledged{a.acknowledged_at ? ` ${formatRelative(a.acknowledged_at)}` : ''}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2 flex-shrink-0">
+          <button onClick={() => onViewChat(a.session_id)} className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 font-medium">View Chat</button>
+          {actionable && needsAck && !a.acknowledged && (
+            <button onClick={() => onAcknowledge(a.session_id)} className="text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold">Acknowledge</button>
+          )}
+          {actionable && (!needsAck || a.acknowledged) && (
+            <button onClick={() => onUpdateStatus(a.session_id, 'reviewed')} className="text-xs px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white font-medium">Mark Reviewed</button>
+          )}
+        </div>
+      </div>
+
+      {/* Urgent warning bar */}
+      {(esc.level === 'urgent' || esc.level === 'overdue') && (
+        <div className="mt-3 pt-3 border-t border-red-200 flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+          <p className="text-xs text-red-700 font-medium">
+            This alert has been waiting {esc.ageMinutes} minutes without a response.
+            {esc.isOffHours && ' Session occurred outside office hours.'}
+          </p>
+        </div>
+      )}
+
+      {/* Overdue → supervisor notice (server also re-notifies by email) */}
+      {esc.level === 'overdue' && (
+        <div className="mt-2 pt-2 border-t border-red-300 flex items-start gap-2">
+          <div className="w-2 h-2 rounded-full bg-red-700 animate-pulse flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-800 font-semibold">
+            Past the escalation deadline — supervisor/backup has been notified by email. Acknowledge this alert immediately.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
+  // Tick every 30 seconds so escalation badges update without a poll.
+  const [, setNow] = useState(Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Re-play alert sound for urgent unattended alerts
-  useEffect(() => {
-    const urgentPending = alerts.filter(a => {
-      if (a.status !== 'pending') return false;
-      const esc = getEscalationState(a);
-      return esc.level === 'urgent' || esc.level === 'overdue';
-    });
-    if (urgentPending.length > 0) playAlertSound();
-    const interval = setInterval(() => {
-      const stillUrgent = alerts.filter(a => {
-        if (a.status !== 'pending') return false;
-        const esc = getEscalationState(a);
-        return esc.level === 'urgent' || esc.level === 'overdue';
-      });
-      if (stillUrgent.length > 0) playAlertSound();
-    }, 5 * 60 * 1000); // every 5 minutes
-    return () => clearInterval(interval);
-  }, [alerts]);
-
-  const pending  = alerts.filter(a => a.status === 'pending');
-  const resolved = alerts.filter(a => a.status !== 'pending');
-
-  const AlertRow = ({ a }) => {
-    const sc  = severityColor(a.severity);
-    const esc = getEscalationState(a);
-    const needsAck = a.severity === 'High' || a.severity === 'Crisis';
-
-    const borderColor =
-      esc.level === 'overdue' ? 'border-red-700' :
-      esc.level === 'urgent'  ? 'border-red-500' :
-      esc.level === 'warning' ? 'border-amber-400' :
-      a.severity === 'High' || a.severity === 'Crisis' ? 'border-red-500' :
-      a.severity === 'Requested' ? 'border-blue-500' :
-      'border-amber-400';
-
-    const bgColor =
-      esc.level === 'overdue' ? 'bg-red-100' :
-      esc.level === 'urgent'  ? 'bg-red-50' :
-      esc.level === 'warning' ? 'bg-amber-50' :
-      a.severity === 'High' || a.severity === 'Crisis' ? 'bg-red-50' :
-      a.severity === 'Requested' ? 'bg-blue-50' :
-      'bg-amber-50';
-
-    return (
-      <div className={`p-4 border-l-4 ${borderColor} ${bgColor} rounded-r-xl mb-3 ${
-        esc.level === 'urgent' ? 'ring-1 ring-red-300 ring-offset-1' : ''
-      }`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.bg} ${sc.text}`}>{a.severity}</span>
-              <span className="text-xs text-gray-500">{a.intent}</span>
-              <span className="text-xs text-gray-400">{formatRelative(a.timestamp)}</span>
-
-              {/* Escalation badge */}
-              {esc.level === 'overdue' && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-700 text-white animate-pulse">
-                  🚨 OVERDUE {esc.ageMinutes}m
-                </span>
-              )}
-              {esc.level === 'urgent' && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-600 text-white animate-pulse">
-                  ⚠ Unattended {esc.ageMinutes}m
-                </span>
-              )}
-              {esc.level === 'warning' && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500 text-white">
-                  Waiting {esc.ageMinutes}m+
-                </span>
-              )}
-
-              {/* Needs-supervisor badge (alert passed the overdue deadline) */}
-              {a.needs_supervisor && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-gray-900 text-white">
-                  Needs supervisor
-                </span>
-              )}
-
-              {/* Off-hours tag */}
-              {esc.isOffHours && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-700 text-gray-200">
-                  Off-hours
-                </span>
-              )}
-            </div>
-            <p className="text-xs font-semibold text-gray-700 mb-1">Session: {a.session_id.slice(0, 16)}...</p>
-            <p className="text-xs text-gray-600 truncate">"{a.message}"</p>
-            {a.acknowledged && (
-              <p className="text-xs text-green-700 mt-1">
-                ✓ Acknowledged{a.acknowledged_at ? ` ${formatRelative(a.acknowledged_at)}` : ''}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2 flex-shrink-0">
-            <button onClick={() => onViewChat(a.session_id)} className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 font-medium">View Chat</button>
-            {a.status === 'pending' && needsAck && !a.acknowledged && (
-              <button onClick={() => onAcknowledge(a.session_id)} className="text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold">Acknowledge</button>
-            )}
-            {a.status === 'pending' && (!needsAck || a.acknowledged) && (
-              <button onClick={() => onUpdateStatus(a.session_id, 'reviewed')} className="text-xs px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white font-medium">Mark Reviewed</button>
-            )}
-          </div>
-        </div>
-
-        {/* Urgent warning bar */}
-        {(esc.level === 'urgent' || esc.level === 'overdue') && (
-          <div className="mt-3 pt-3 border-t border-red-200 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-            <p className="text-xs text-red-700 font-medium">
-              This alert has been waiting {esc.ageMinutes} minutes without a response.
-              {esc.isOffHours && ' Session occurred outside office hours.'}
-            </p>
-          </div>
-        )}
-
-        {/* Overdue → supervisor notice (server also re-notifies by email) */}
-        {esc.level === 'overdue' && (
-          <div className="mt-2 pt-2 border-t border-red-300 flex items-start gap-2">
-            <div className="w-2 h-2 rounded-full bg-red-700 animate-pulse flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-red-800 font-semibold">
-              Past the escalation deadline — supervisor/backup has been notified by email. Acknowledge this alert immediately.
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  };
+  // Three honest states instead of "everything that isn't pending is
+  // resolved": pending (needs attention), escalated (a counselor took over
+  // the conversation) and reviewed/resolved.
+  const pending   = alerts.filter(a => a.status === 'pending');
+  const escalated = alerts.filter(a => a.status === 'escalated');
+  const resolved  = alerts.filter(a => a.status !== 'pending' && a.status !== 'escalated');
 
   return (
     <div>
@@ -426,13 +477,22 @@ function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <h3 className="text-sm font-semibold text-gray-900">Pending ({pending.length})</h3>
           </div>
-          {pending.map((a, i) => <AlertRow key={i} a={a} />)}
+          {pending.map((a) => <AlertRow key={a.session_id} a={a} onViewChat={onViewChat} onUpdateStatus={onUpdateStatus} onAcknowledge={onAcknowledge} />)}
+        </div>
+      )}
+      {escalated.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <h3 className="text-sm font-semibold text-gray-900">In Progress — Counselor Engaged ({escalated.length})</h3>
+          </div>
+          {escalated.map((a) => <AlertRow key={a.session_id} a={a} onViewChat={onViewChat} onUpdateStatus={onUpdateStatus} onAcknowledge={onAcknowledge} />)}
         </div>
       )}
       {resolved.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-500 mb-3">Resolved / Reviewed ({resolved.length})</h3>
-          {resolved.map((a, i) => <AlertRow key={i} a={a} />)}
+          <h3 className="text-sm font-semibold text-gray-500 mb-3">Reviewed / Resolved ({resolved.length})</h3>
+          {resolved.map((a) => <AlertRow key={a.session_id} a={a} onViewChat={onViewChat} onUpdateStatus={onUpdateStatus} onAcknowledge={onAcknowledge} />)}
         </div>
       )}
       {alerts.length === 0 && (
@@ -577,6 +637,9 @@ function ChatModal({ sessionId, onClose }) {
   const [savedNote, setSavedNote] = useState(null);
   const [savingNote, setSavingNote] = useState(false);
   const [noteError, setNoteError] = useState('');
+  // Visible failure feedback for takeover/return-to-GAIDA (previously these
+  // errors were only logged to the console or shown on the wrong tab).
+  const [actionError, setActionError] = useState('');
 
   const OUTCOMES = [
     { value: 'resolved',          label: 'Resolved',           desc: 'Handled, no further action needed' },
@@ -644,6 +707,14 @@ function ChatModal({ sessionId, onClose }) {
       const data = await res.json();
       if (data.messages) setMessages(data.messages);
       setStudentTyping(data.student_typing || false);
+
+      // Keep the "you have joined" state truthful across modal re-opens:
+      // taken over = a counselor (ideally this one) is actively chatting.
+      if (typeof data.counselor_active === 'boolean') {
+        const myId = getCounselorId();
+        const mine = !data.assigned_counselor_id || data.assigned_counselor_id === myId;
+        setTookOver(data.counselor_active && mine);
+      }
     } catch (e) {} finally {
       setLoading(false);
     }
@@ -662,6 +733,7 @@ const typingThrottleRef = useRef(null);
 
   const handleInputChange = (e) => {
     setTakeoverMsg(e.target.value);
+    if (actionError) setActionError('');
 
     // Only fire typing signal if not already throttled
     if (!typingThrottleRef.current) {
@@ -685,40 +757,51 @@ const typingThrottleRef = useRef(null);
     clearTimeout(typingTimeoutRef.current);
     fireCounselorTyping(false);
     setSending(true);
-    const counselorData = JSON.parse(localStorage.getItem('counselorData') || '{}');
+    setActionError('');
     try {
       const res = await apiFetch(`${BACKEND}/api/counselor/takeover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message: text, counselor_id: counselorData.id || counselorData.student_number }),
+        body: JSON.stringify({ session_id: sessionId, message: text, counselor_id: getCounselorId() }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data.ok) {
         setTookOver(true);
         setTakeoverMsg('');
         fetchChat();
+      } else if (data.error === 'already_assigned') {
+        setActionError('Another counselor is already handling this session.');
+      } else {
+        setActionError(data.error || 'Could not send your message. Please try again.');
       }
-    } catch (e) {} finally {
+    } catch (e) {
+      setActionError('Connection error sending your message. Please try again.');
+    } finally {
       setSending(false);
     }
   };
 
   const handleReturnToGaida = async () => {
     setReturningToGaida(true);
+    setActionError('');
     try {
       const res = await apiFetch(`${BACKEND}/api/counselor/return-to-gaida`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId }),
+        body: JSON.stringify({ session_id: sessionId, counselor_id: getCounselorId() }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data.ok) {
         setTookOver(false);
         fetchChat();
       } else if (data.error === 'already_assigned') {
-        setNoteError(`This session is already being handled by another counselor.`);
+        setActionError('This session is being handled by another counselor — they need to return it to GAIDA first.');
+      } else {
+        setActionError(data.error || data.detail || 'Could not hand the session back to GAIDA.');
       }
-    } catch (e) {} finally {
+    } catch (e) {
+      setActionError('Connection error returning the session. Please try again.');
+    } finally {
       setReturningToGaida(false);
     }
   };
@@ -738,9 +821,11 @@ const typingThrottleRef = useRef(null);
           outcome: noteOutcome,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data.ok) {
-        setSavedNote({ note: noteText, outcome: noteOutcome, updated_at: new Date().toISOString() });
+        setSavedNote({ note: noteText, outcome: noteOutcome, updated_at: new Date().toISOString(), created_at: new Date().toISOString() });
+      } else {
+        setNoteError(data.error || 'Failed to save. Please try again.');
       }
     } catch (e) {
       setNoteError('Failed to save. Please try again.');
@@ -794,19 +879,7 @@ const typingThrottleRef = useRef(null);
   const handleExportSession = async () => {
     setExporting(true);
     try {
-      const res = await apiFetch(`${BACKEND}/api/counselor/export-session/${sessionId}`);
-      if (!res.ok) throw new Error('Export failed');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `GAIDA_Session_${sessionId.slice(0, 8)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error('Export error:', e);
+      await downloadSessionPdf(sessionId);
     } finally {
       setExporting(false);
     }
@@ -1014,8 +1087,8 @@ const typingThrottleRef = useRef(null);
                 <div className="flex items-center gap-2">
                   <span className="text-blue-500 text-xs">✓</span>
                   <span className="text-xs text-blue-700 font-medium">Note saved</span>
-                  {savedNote.updated_at && (
-                    <span className="text-xs text-blue-400">{formatRelative(savedNote.updated_at)}</span>
+                  {(savedNote.updated_at || savedNote.created_at) && (
+                    <span className="text-xs text-blue-400">{formatRelative(savedNote.updated_at || savedNote.created_at)}</span>
                   )}
                 </div>
                 {savedNote.outcome && (() => {
@@ -1088,6 +1161,9 @@ const typingThrottleRef = useRef(null);
         {/* Quick Responses + Input — hidden on notes tab */}
         {activeTab !== 'notes' && (
           <div className="px-4 pt-3 border-t border-gray-100 flex-shrink-0">
+            {actionError && (
+              <p className="text-xs text-red-600 mb-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{actionError}</p>
+            )}
             <p className="text-xs text-gray-400 mb-2">Quick responses:</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {QUICK_RESPONSES.map((r) => (
@@ -1185,12 +1261,19 @@ function DetectionPage() {
 // ── Reports Page ──────────────────────────────────────────────────────────────
 function ReportsPage() {
   const [reports, setReports] = useState(null);
+  const [reportsError, setReportsError] = useState('');
 
   useEffect(() => {
     apiFetch(`${BACKEND}/api/counselor/analytics/reports`)
       .then(r => r.json())
-      .then(setReports)
-      .catch(() => {});
+      .then(data => {
+        if (data && data.error) {
+          setReportsError(String(data.error));
+        } else {
+          setReports(data);
+        }
+      })
+      .catch(() => setReportsError('Reports are unavailable right now.'));
   }, []);
 
   const trendData = reports?.monthly_reports || [];
@@ -1202,6 +1285,11 @@ function ReportsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
         <p className="text-sm text-gray-500 mt-0.5">System performance and anxiety detection analytics</p>
       </div>
+      {reportsError && (
+        <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          Could not load reports: {reportsError}
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm mb-5">
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Monthly Trends</h3>
         {!reports ? (
@@ -1283,7 +1371,9 @@ export default function CounselorDashboard() {
   const [welfare, setWelfare] = useState([]);
   const [chatSessionId, setChatSessionId] = useState(null);
   const [expanded, setExpanded] = useState(false);
-  const prevPendingCountRef = useRef(0);
+  const prevPendingIdsRef = useRef(new Set());
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
   const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
@@ -1309,18 +1399,42 @@ export default function CounselorDashboard() {
       const res = await apiFetch(`${BACKEND}/api/counselor/alerts`);
       const data = await res.json();
       if (data.alerts) {
-        const newPending = data.alerts.filter(a => a.status === 'pending').length;
-        if (newPending > prevPendingCountRef.current) {
+        // Detect NEW pending alerts by ID (count-based logic missed a replaced
+        // alert with the same count, and re-beeped every poll because the
+        // effect ran on every 2s fetch).
+        const pendingNow = data.alerts.filter(a => a.status === 'pending');
+        const pendingNowIds = pendingNow.map(a => a.session_id);
+        const freshIds = pendingNowIds.filter(id => !prevPendingIdsRef.current.has(id));
+        if (freshIds.length > 0) {
           playAlertSound();
           if (Notification.permission === 'granted') {
-            new Notification('⚠ GAIDA Alert', { body: 'New High/Crisis session detected', icon: '/favicon.ico' });
+            new Notification('⚠ GAIDA Alert', {
+              body: `${freshIds.length} new High/Crisis alert${freshIds.length > 1 ? 's' : ''} need attention`,
+              icon: '/favicon.ico',
+            });
           }
         }
-        prevPendingCountRef.current = newPending;
+        prevPendingIdsRef.current = new Set(pendingNowIds);
         setAlerts(data.alerts);
       }
     } catch (e) {}
   };
+
+  // Every 5 minutes, re-remind with a sound while any pending alert is still
+  // urgent or overdue (moved here from AlertsPage so it works on every tab and
+  // doesn't double-beep with fetchAlerts above).
+  useEffect(() => {
+    const check = () => {
+      const anyUrgent = alertsRef.current.some(a => {
+        if (a.status !== 'pending') return false;
+        const esc = getEscalationState(a);
+        return esc.level === 'urgent' || esc.level === 'overdue';
+      });
+      if (anyUrgent) playAlertSound();
+    };
+    const interval = setInterval(check, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchSessions = async () => {
     try {
@@ -1338,9 +1452,12 @@ export default function CounselorDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, status }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.detail || 'This alert needs to be acknowledged first.');
+      const data = await res.json().catch(() => ({}));
+      // The endpoint can return HTTP 200 with ok:false (e.g. not found, or a
+      // High/Crisis alert that needs acknowledging first) — treat both the
+      // same instead of silently doing nothing.
+      if (!res.ok || data.ok === false) {
+        alert(data.detail || data.error || 'This alert needs to be acknowledged first.');
         return;
       }
       fetchAlerts();
@@ -1349,11 +1466,16 @@ export default function CounselorDashboard() {
 
   const handleAcknowledge = async (sessionId) => {
     try {
-      await apiFetch(`${BACKEND}/api/counselor/alerts/acknowledge`, {
+      const res = await apiFetch(`${BACKEND}/api/counselor/alerts/acknowledge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        alert(data.detail || data.error || 'Could not acknowledge this alert.');
+        return;
+      }
       fetchAlerts();
     } catch (e) {}
   };
@@ -1470,6 +1592,7 @@ function ResolvedCasesPage() {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
+  const [casesError, setCasesError] = useState('');
 
   const handleDelete = async (sessionId, e) => {
     e.stopPropagation();
@@ -1510,9 +1633,13 @@ function ResolvedCasesPage() {
     apiFetch(`${BACKEND}/api/counselor/sessions/resolved`)
       .then(r => r.json())
       .then(data => {
-        if (data.sessions) setCases(data.sessions);
+        if (data && data.error) {
+          setCasesError(String(data.error));
+        } else if (data.sessions) {
+          setCases(data.sessions);
+        }
       })
-      .catch(() => {})
+      .catch(() => setCasesError('Resolved cases are unavailable right now.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -1525,6 +1652,11 @@ function ResolvedCasesPage() {
 
       {loading ? (
         <p className="text-xs text-gray-400 text-center py-20">Loading...</p>
+      ) : casesError ? (
+        <div className="text-center py-20 text-gray-500">
+          <p className="text-sm font-medium">Could not load resolved cases.</p>
+          <p className="text-xs mt-1">{casesError}</p>
+        </div>
       ) : cases.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-4xl mb-3">✓</p>
@@ -1574,7 +1706,7 @@ function ResolvedCasesPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.open(`${BACKEND}/api/counselor/export-session/${c.session_id}`, '_blank');
+                        downloadSessionPdf(c.session_id);
                       }}
                       className="text-xs px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg border border-gray-200 transition-colors"
                     >
@@ -1619,6 +1751,7 @@ function ResolvedCasesPage() {
                             }`}>
                               {m.sender === 'counselor' && <p className="text-blue-200 text-xs font-semibold mb-1">Counselor</p>}
                               {m.sender === 'bot' && <p className="text-gray-400 text-xs font-semibold mb-1">GAIDA</p>}
+                              {m.sender === 'system' && <p className="text-gray-400 text-xs font-semibold mb-1">System</p>}
                               <p>{m.message || m.text}</p>
                             </div>
                           </div>

@@ -27,6 +27,10 @@ def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
     students resume the exact conversation they had before.
 
     Returns None if no interactions exist for this session.
+
+    The sessions row is also read so a backend restart can't resurrect an
+    explicitly ended (ended_at set) or resolved session as "active": those
+    come back inactive/resolved instead of showing up as live chats again.
     """
     try:
         rows = (
@@ -43,6 +47,29 @@ def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
     data = rows.data
     if not data:
         return None
+
+    # End/resolve state lives on the sessions row (never inside interactions).
+    # Defaults keep working even if the row/columns are missing.
+    ended_at = None
+    resolved = False
+    resolved_at = None
+    resolved_by = None
+    try:
+        sess_rows = (
+            supabase.table("sessions")
+            .select("ended_at, resolved, resolved_at, resolved_by")
+            .eq("session_token", session_id)
+            .limit(1)
+            .execute()
+        ).data
+        if sess_rows:
+            row0 = sess_rows[0]
+            ended_at = row0.get("ended_at")
+            resolved = bool(row0.get("resolved"))
+            resolved_at = row0.get("resolved_at")
+            resolved_by = row0.get("resolved_by")
+    except Exception as e:
+        print(f"Session load error (sessions row): {e}")
 
     # Each row is one user turn + GAIDA's reply (stored in `response`).
     messages = []
@@ -93,13 +120,17 @@ def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
         "post_crisis": last.get("intent") == "suicidal" or last.get("severity") in ("High", "Crisis"),
         "pending_acoustic": None,
         "covered_themes": covered_themes,
+        "resolved": resolved,
+        "resolved_at": resolved_at,
+        "resolved_by": resolved_by,
     }
 
     return {
         "session_id": session_id,
         "user_id": last.get("student_id") or None,
         "messages": messages,
-        "active": True,
+        "active": not bool(ended_at),
+        "ended_at": ended_at,
         "meta": meta,
         "started_at": messages[0]["timestamp"] if messages else None,
     }
@@ -245,6 +276,22 @@ def record_interaction(session_id: str, sender: str, text: str, analysis: Dict |
     }
     session["messages"].append(entry)
 
+    # A student sending a message means the session is live again — a student
+    # who refreshed/left mid-chat (pagehide end beacon) but keeps talking must
+    # not stay hidden as "ended". Re-activating also clears ended_at in
+    # Supabase so a later restart rehydrates it as active. Counselor/system
+    # writes never resurrect a closed session.
+    if sender == "user" and not session.get("active"):
+        session["active"] = True
+        if session.get("ended_at"):
+            session["ended_at"] = None
+            try:
+                supabase.table("sessions").update({"ended_at": None}).eq(
+                    "session_token", session_id
+                ).execute()
+            except Exception as e:
+                print(f"Session resume update error: {e}")
+
     # Update session-level meta (last intent, confidence, intensity, escalate)
     if analysis:
         session["meta"]["last_intent"] = analysis.get("intent")
@@ -283,7 +330,7 @@ def get_session(session_id: str):
 
 
 def list_active_sessions():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     result = []
     for s in SESSIONS.values():
         if not s.get("active"):
@@ -293,7 +340,12 @@ def list_active_sessions():
         last_msg_time = s["messages"][-1].get("timestamp")
         if last_msg_time:
             try:
-                last_dt = datetime.fromisoformat(last_msg_time)
+                # Sessions rehydrated from Supabase carry aware "+00:00"
+                # timestamps; in-memory ones use trailing "Z". Parsing both
+                # to aware UTC keeps the 30-min idle filter actually running
+                # (a naive-vs-aware subtraction raised TypeError before and
+                # every session was silently kept "active" forever).
+                last_dt = _parse_utc_aware(last_msg_time)
                 age_minutes = (now - last_dt).total_seconds() / 60
                 if age_minutes > SESSION_STALE_MINUTES:
                     continue  # no activity in 30+ minutes — treat as abandoned

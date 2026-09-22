@@ -121,6 +121,10 @@ export default function StudentLogin() {
       );
       const data = await response.json();
       if (response.ok) {
+        // A stale counselor_token on a shared device would keep counselor
+        // requests alive past student login; drop it so the student token is
+        // the only one in play.
+        localStorage.removeItem('counselor_token');
         localStorage.setItem('session_token', data.session_token);
         localStorage.setItem('student_id', data.student_id);
         navigate('/consent');
@@ -148,6 +152,7 @@ export default function StudentLogin() {
       });
       const data = await response.json();
       if (response.ok) {
+        localStorage.removeItem('counselor_token');
         localStorage.setItem('session_token', data.session_token);
         localStorage.setItem('student_id', data.student_id);
         navigate('/consent');

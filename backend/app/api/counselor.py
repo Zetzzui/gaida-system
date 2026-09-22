@@ -89,7 +89,12 @@ def _parse_utc(value):
 
 
 def _alert_age_minutes(alert: dict, now: datetime) -> int:
-    ts = alert.get("timestamp") or alert.get("created_at")
+    # Escalation runs off the FIRST time this alert needed attention, not the
+    # latest message: `timestamp` is refreshed on every student message (so the
+    # dashboard shows fresh activity), while `first_alerted_at` is frozen at
+    # creation. Without this, a student who keeps chatting would silently reset
+    # the escalation deadline forever.
+    ts = alert.get("first_alerted_at") or alert.get("timestamp") or alert.get("created_at")
     if not ts:
         return 0
     try:
@@ -107,6 +112,8 @@ def _row_to_alert(row: dict) -> dict:
     """Normalize a counselor_alerts DB row into the in-memory alert shape."""
     return {
         "timestamp": row.get("created_at") or (datetime.now(timezone.utc).isoformat() + "Z"),
+        # Frozen age anchor for escalation deadlines — created_at never changes.
+        "first_alerted_at": row.get("created_at") or row.get("timestamp"),
         "session_id": row.get("session_id"),
         "user_id": row.get("user_id"),
         "intent": row.get("intent"),
@@ -422,9 +429,13 @@ def process_alert(
             existing["last_message"] = message
             existing["timestamp"] = datetime.utcnow().isoformat() + "Z"
             existing["intent"] = intent
+            # Keep the original age anchor (do NOT let new messages reset the
+            # escalation deadline).
+            existing.setdefault("first_alerted_at", existing["timestamp"])
         else:
             alert_entry = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
+                "first_alerted_at": datetime.utcnow().isoformat() + "Z",
                 "session_id": session_id,
                 "user_id": user_id,
                 "intent": intent,
@@ -534,13 +545,14 @@ def rate_session(payload: SessionRating, user: dict = Depends(get_current_user))
 @router.get("/alerts")
 def get_alerts(user: dict = Depends(require_role("counselor"))):
     _hydrate_alerts()
-    return {"alerts": ALERTS, "count": len(ALERTS)}
+    visible = [a for a in ALERTS if not a.get("deleted")]
+    return {"alerts": visible, "count": len(visible)}
 
 
 @router.get("/alerts/pending")
 def get_pending_alerts(user: dict = Depends(require_role("counselor"))):
     _hydrate_alerts()
-    pending = [a for a in ALERTS if a.get("status") == "pending"]
+    pending = [a for a in ALERTS if a.get("status") == "pending" and not a.get("deleted")]
     return {"alerts": pending, "count": len(pending)}
 
 
@@ -619,9 +631,11 @@ def request_counselor(payload: CounselorRequest, user: dict = Depends(get_curren
         if existing:
             existing["last_message"] = payload.message
             existing["timestamp"] = datetime.utcnow().isoformat() + "Z"
+            existing.setdefault("first_alerted_at", existing["timestamp"])
         else:
             alert_entry = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
+                "first_alerted_at": datetime.utcnow().isoformat() + "Z",
                 "session_id": payload.session_id,
                 "user_id": None,
                 "intent": "student_requested",
@@ -717,7 +731,11 @@ def get_active_sessions(user: dict = Depends(require_role("counselor"))):
             if meta.get("resolved"):
                 continue
 
-            severity = meta.get("severity", "Normal")
+            # record_interaction stores the session's worst state in
+            # peak_severity; reading meta["severity"] (never written) made every
+            # session fall through to the confidence heuristic below and no
+            # session could ever display as Crisis.
+            severity = meta.get("peak_severity") or meta.get("severity") or "Normal"
             confidence = meta.get("running_confidence", 0.3)
 
             if not severity or severity == "Normal":
@@ -731,7 +749,9 @@ def get_active_sessions(user: dict = Depends(require_role("counselor"))):
                     severity = "Normal"
 
             has_alert = any(
-                a["session_id"] == s["session_id"] and a["status"] == "pending"
+                a["session_id"] == s["session_id"]
+                and a["status"] == "pending"
+                and not a.get("deleted")
                 for a in ALERTS
             )
 
@@ -863,6 +883,25 @@ def get_resolved_sessions(user: dict = Depends(require_role("counselor"))):
                 else None
             )
 
+            # Build a labeled transcript. A stored row is one user turn +
+            # GAIDA's reply in `response`; counselor takeover messages and
+            # system notices are rows whose message text carries no GAIDA
+            # reply. Distinguish them by intent: counselor_intervention = a
+            # counselor, otherwise intent None = a system notice, else it's
+            # a user turn (with GAIDA's reply if present).
+            transcript = []
+            for row in interactions.data:
+                ts = row.get("timestamp")
+                msg = row.get("message") or ""
+                if row.get("intent") == "counselor_intervention":
+                    transcript.append({"sender": "counselor", "text": msg, "timestamp": ts})
+                elif row.get("intent") is None and msg:
+                    transcript.append({"sender": "system", "text": msg, "timestamp": ts})
+                else:
+                    transcript.append({"sender": "user", "text": msg, "timestamp": ts})
+                    if row.get("response"):
+                        transcript.append({"sender": "bot", "text": row["response"], "timestamp": ts})
+
             result.append(
                 {
                     "session_id": session_id,
@@ -873,7 +912,7 @@ def get_resolved_sessions(user: dict = Depends(require_role("counselor"))):
                     "timestamp": alert.get("created_at"),
                     "resolved_at": alert.get("resolved_at"),
                     "note": notes.data[0] if notes.data else None,
-                    "transcript": interactions.data,
+                    "transcript": transcript,
                 }
             )
 
@@ -986,6 +1025,17 @@ def counselor_takeover(payload: TakeOverMessage, user: dict = Depends(require_ro
                 alert["counselor_took_over"] = True
                 break
 
+        # Mirror the status change to Supabase so the DB row matches the
+        # in-memory state (otherwise a restart flips the alert back to pending).
+        try:
+            from app.database.database import supabase
+
+            supabase.table("counselor_alerts").update(
+                {"status": "escalated", "counselor_took_over": True}
+            ).eq("session_id", payload.session_id).execute()
+        except Exception as e:
+            print(f"[counselor] takeover alert persist error: {e}")
+
         return {"ok": True, "message": payload.message}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -1004,6 +1054,14 @@ def return_to_gaida(payload: dict, user: dict = Depends(require_role("counselor"
 
         if "meta" not in session:
             session["meta"] = {}
+
+        # Only the counselor who took over may hand the session back — without
+        # this, counselor B could silently yank a session counselor A is
+        # actively handling.
+        assigned = session["meta"].get("assigned_counselor_id")
+        caller = (payload.get("counselor_id") or "").strip() or user.get("user_id")
+        if assigned and caller and assigned != caller:
+            return {"ok": False, "error": "already_assigned", "assigned_to": assigned}
 
         session["meta"]["counselor_active"] = False
         session["meta"]["assigned_counselor_id"] = None
@@ -1252,7 +1310,7 @@ def export_session_pdf(session_id: str, user: dict = Depends(require_role("couns
             session_result = (
                 supabase.table("sessions")
                 .select("*")
-                .eq("session_id", session_id)
+                .eq("session_token", session_id)
                 .single()
                 .execute()
             )
@@ -1276,28 +1334,48 @@ def export_session_pdf(session_id: str, user: dict = Depends(require_role("couns
 
         messages = []
         for row in interactions:
-            messages.append(
-                {
-                    "sender": "user",
-                    "text": row["message"],
-                    "timestamp": row["timestamp"],
-                    "analysis": {
-                        "intent": row.get("intent"),
-                        "confidence": row.get("confidence"),
-                    },
-                }
-            )
-            if row.get("response"):
+            ts = row.get("timestamp")
+            msg = row.get("message") or ""
+            # Same sender disambiguation as Resolved Cases: a row stores one
+            # user turn + GAIDA's reply in `response`, while counselor
+            # takeover messages (intent=counselor_intervention) and system
+            # notices (intent None, no GAIDA reply) are their own rows.
+            if row.get("intent") == "counselor_intervention":
                 messages.append(
                     {
-                        "sender": "assistant",
-                        "text": row["response"],
-                        "timestamp": row["timestamp"],
+                        "sender": "counselor",
+                        "text": msg,
+                        "timestamp": ts,
+                        "analysis": {"confidence": row.get("confidence")},
                     }
                 )
+            elif row.get("intent") is None and msg:
+                messages.append(
+                    {"sender": "system", "text": msg, "timestamp": ts}
+                )
+            else:
+                messages.append(
+                    {
+                        "sender": "user",
+                        "text": msg,
+                        "timestamp": ts,
+                        "analysis": {
+                            "intent": row.get("intent"),
+                            "confidence": row.get("confidence"),
+                        },
+                    }
+                )
+                if row.get("response"):
+                    messages.append(
+                        {
+                            "sender": "assistant",
+                            "text": row["response"],
+                            "timestamp": ts,
+                        }
+                    )
 
         user_id = session["student_id"]
-        started_at = session["created_at"]
+        started_at = session.get("started_at") or session.get("created_at")
 
         creds = TEST_CREDENTIALS.get(user_id, {}) if user_id else {}
         student_name = creds.get("name", "Not identified")
@@ -1368,13 +1446,24 @@ def export_session_pdf(session_id: str, user: dict = Depends(require_role("couns
         elements.append(Spacer(1, 16))
 
         # ── Session metadata table ────────────────────────────
+        last_confidence = meta.get("running_confidence")
+        if last_confidence is None:
+            try:
+                # sessions table has no confidence column — use the last
+                # analyzed interaction's score if available.
+                conf_candidates = [r.get("confidence") for r in interactions if r.get("confidence") is not None]
+                last_confidence = conf_candidates[-1] if conf_candidates else 0
+            except (TypeError, IndexError):
+                last_confidence = 0
+
+        resolved_by = session.get("resolved_by") or meta.get("resolved_by") or "Not yet resolved"
         summary_data = [
             ["Session ID", session_id],
-            ["Started At", started_at],
+            ["Started At", started_at or "—"],
             ["Total Messages", str(len(messages))],
-            ["Peak Anxiety Level", str(meta.get("running_intent", "—")).title()],
-            ["Final Confidence Score", f"{meta.get('running_confidence', 0):.0%}"],
-            ["Resolved By", meta.get("resolved_by") or "Not yet resolved"],
+            ["Peak Anxiety Level", str(session.get("peak_severity") or meta.get("peak_severity") or "—")],
+            ["Final Confidence Score", f"{float(last_confidence or 0):.0%}"],
+            ["Resolved By", resolved_by],
             ["Outcome", note_outcome.replace("_", " ").title() if note_outcome != "—" else "—"],
             ["Case Note", note_text],
         ]

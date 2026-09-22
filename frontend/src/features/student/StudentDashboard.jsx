@@ -327,6 +327,29 @@ export default function StudentDashboard() {
     return () => clearInterval(timerRef.current);
   }, [navigate]);
 
+  // ── End the session when the student leaves the page ─────────────
+  // pagehide fires on tab close, refresh, and navigating away (but NOT on SPA
+  // route changes or merely backgrounding the tab). The keepalive fetch lets
+  // the request finish during unload, so abandoned sessions stop counting as
+  // "active" immediately instead of lingering until the next backend restart.
+  // A student who refreshes and keeps chatting re-activates the session on
+  // their next message (see record_interaction in session_manager.py).
+  useEffect(() => {
+    const notifyLeave = () => {
+      const sessionId = localStorage.getItem('session_id');
+      if (!sessionId) return;
+      try {
+        apiFetch(`${BACKEND}/api/session/${sessionId}/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
+        }).catch(() => {});
+      } catch (e) {}
+    };
+    window.addEventListener('pagehide', notifyLeave);
+    return () => window.removeEventListener('pagehide', notifyLeave);
+  }, []);
+
   // ── Auto-scroll ───────────────────────────────────────────────
   useEffect(() => {
     containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' });

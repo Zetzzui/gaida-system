@@ -88,6 +88,9 @@ export default function CounselorLogin() {
       const data = await response.json();
       if (response.ok) {
         const name = decodeGoogleName(credential);
+        // A stale student session_token shadows the counselor token in
+        // apiFetch's getAuthToken() and silently 403s every counselor request.
+        localStorage.removeItem('session_token');
         localStorage.setItem('counselor_token', data.session_token);
         localStorage.setItem('counselorData', JSON.stringify({
           id: data.student_id,
@@ -130,6 +133,9 @@ export default function CounselorLogin() {
       });
       const data = await response.json();
       if (response.ok) {
+        // A stale student session_token shadows the counselor token in
+        // apiFetch's getAuthToken() and silently 403s every counselor request.
+        localStorage.removeItem('session_token');
         localStorage.setItem('counselor_token', data.session_token);
         localStorage.setItem('counselorData', JSON.stringify({
           id: data.student_id,
