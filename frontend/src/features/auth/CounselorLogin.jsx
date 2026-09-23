@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GoogleSignIn from '../../components/GoogleSignIn';
 import { BACKEND_URL } from '../../config';
@@ -9,10 +9,17 @@ export default function CounselorLogin() {
   const [password, setPassword] = useState('');
   const [antibot, setAntibot] = useState('');
   const [captchaText, setCaptchaText] = useState('');
-  const [showCaptcha, setShowCaptcha] = useState(false);
+  const [showCaptcha, setShowCaptcha] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const canvasRef = useRef(null);
+
+  // Generate captcha immediately when the page loads, same as StudentLogin,
+  // instead of waiting for the field to be focused.
+  useEffect(() => {
+    const text = generateCaptcha();
+    drawCaptcha(text);
+  }, []);
 
   const generateCaptcha = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -161,15 +168,17 @@ export default function CounselorLogin() {
       <div
         className="absolute inset-0 bg-center bg-cover bg-no-repeat"
         style={{ backgroundImage: "url('https://www.ue.edu.ph/mla/wp-content/uploads/2023/04/uesocialogp.png')" }}
-      />
+      >
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+      </div>
 
       {/* White card */}
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-10 w-full max-w-md mx-4">
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-6 sm:p-7 w-full max-w-sm mx-4">
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-7">
           <img
-            src="https://www.ue.edu.ph/mla/wp-content/uploads/2023/04/uesocialogp.png"
+            src="https://www.ue.edu.ph/mla/wp-content/uploads/2020/12/UE_RED_SEAL_09.png"
             alt="University of the East"
             className="w-20 h-20 object-cover object-right rounded-full mb-4 shadow-lg border-4 border-red-700"
           />
