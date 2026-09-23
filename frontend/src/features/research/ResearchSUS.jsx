@@ -30,6 +30,22 @@ const SUS_OPTIONS = [
 
 const STEP = { SUS: 0, SUBMITTING: 1, DONE: 2 };
 
+// Mirrors the "Sky" theme in StudentDashboard.jsx / ResearchFlow.jsx so the
+// post-session survey reads as the same experience, not a separate dark page.
+const T = {
+  bg: '#F7FAF9',
+  sidebar: '#EEF4F6',
+  card: '#FFFFFF',
+  border: '#DCE7EA',
+  accent: '#5E8FBD',
+  accentDark: '#4A7699',
+  textPrimary: '#2E3B44',
+  textSecondary: '#5C6F78',
+  textMuted: '#95A6AC',
+  errorText: '#9C5A3C',
+  errorBg: '#F5E4DA',
+};
+
 export default function ResearchSUS() {
   const navigate = useNavigate();
   const [step, setStep] = useState(STEP.SUS);
@@ -83,10 +99,16 @@ export default function ResearchSUS() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-gray-800 rounded-xl shadow-xl p-8">
-        <h1 className="text-2xl font-bold mb-1">One Last Thing</h1>
-        <p className="text-gray-400 text-sm mb-6">
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ background: T.bg, color: T.textPrimary }}
+    >
+      <div
+        className="w-full max-w-xl rounded-2xl p-8"
+        style={{ background: T.card, border: `1px solid ${T.border}`, boxShadow: '0 1px 3px rgba(46,59,68,0.06)' }}
+      >
+        <h1 className="text-2xl font-bold mb-1" style={{ color: T.textPrimary }}>One Last Thing</h1>
+        <p className="text-sm mb-6" style={{ color: T.textSecondary }}>
           A quick 10-question survey about your experience using GAIDA just now. This
           helps us evaluate how usable the system actually is — there are no right or
           wrong answers.
@@ -97,29 +119,33 @@ export default function ResearchSUS() {
             <div className="space-y-5 max-h-96 overflow-y-auto pr-1">
               {SUS_QUESTIONS.map((q, i) => (
                 <div key={i}>
-                  <p className="text-sm mb-2">{i + 1}. {q}</p>
+                  <p className="text-sm mb-2" style={{ color: T.textPrimary }}>{i + 1}. {q}</p>
                   <div className="grid grid-cols-5 gap-1">
-                    {SUS_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        title={opt.label}
-                        onClick={() => {
-                          const next = [...answers];
-                          next[i] = opt.value;
-                          setAnswers(next);
-                        }}
-                        className={`text-[11px] py-2 px-1 rounded-lg border leading-tight ${
-                          answers[i] === opt.value
-                            ? 'bg-red-600 border-red-600'
-                            : 'border-gray-600 hover:bg-gray-700'
-                        }`}
-                      >
-                        {opt.value}
-                      </button>
-                    ))}
+                    {SUS_OPTIONS.map((opt) => {
+                      const selected = answers[i] === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          title={opt.label}
+                          onClick={() => {
+                            const next = [...answers];
+                            next[i] = opt.value;
+                            setAnswers(next);
+                          }}
+                          className="text-[11px] py-2 px-1 rounded-lg leading-tight font-medium transition-colors"
+                          style={
+                            selected
+                              ? { background: T.accent, color: '#FFFFFF', border: `1px solid ${T.accent}` }
+                              : { background: T.card, color: T.textSecondary, border: `1px solid ${T.border}` }
+                          }
+                        >
+                          {opt.value}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="flex justify-between text-[10px] text-gray-500 mt-1 px-1">
+                  <div className="flex justify-between text-[10px] mt-1 px-1" style={{ color: T.textMuted }}>
                     <span>Strongly disagree</span>
                     <span>Strongly agree</span>
                   </div>
@@ -127,7 +153,11 @@ export default function ResearchSUS() {
               ))}
             </div>
 
-            {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
+            {error && (
+              <p className="text-sm mt-4 rounded-lg px-3 py-2" style={{ color: T.errorText, background: T.errorBg }}>
+                {error}
+              </p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button
@@ -135,14 +165,16 @@ export default function ResearchSUS() {
                   clearHandoffKeys();
                   navigate('/');
                 }}
-                className="flex-1 py-2 rounded-lg border border-gray-600 hover:bg-gray-700 text-sm"
+                className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.textSecondary }}
               >
                 Skip
               </button>
               <button
                 disabled={!allAnswered}
                 onClick={handleSubmit}
-                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600 font-semibold"
+                className="flex-1 py-2 rounded-lg font-semibold transition-opacity disabled:opacity-40"
+                style={{ background: T.accent, color: '#FFFFFF' }}
               >
                 Submit
               </button>
@@ -151,15 +183,16 @@ export default function ResearchSUS() {
         )}
 
         {step === STEP.SUBMITTING && (
-          <p className="text-center text-gray-400 py-10">Saving your responses…</p>
+          <p className="text-center py-10" style={{ color: T.textSecondary }}>Saving your responses…</p>
         )}
 
         {step === STEP.DONE && (
           <div className="text-center py-6">
-            <p className="text-gray-200 mb-6">Thank you — your feedback has been recorded.</p>
+            <p className="mb-6" style={{ color: T.textPrimary }}>Thank you — your feedback has been recorded.</p>
             <button
               onClick={() => navigate('/')}
-              className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+              className="w-full py-2 rounded-lg font-semibold transition-opacity"
+              style={{ background: T.accent, color: '#FFFFFF' }}
             >
               Return to Portal
             </button>

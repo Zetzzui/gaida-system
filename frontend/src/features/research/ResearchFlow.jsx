@@ -36,6 +36,24 @@ const CERC_REFERENCE = 'CCSS-CERC Code/Registration ID 2025-1-PTCS-202';
 const STUDENT_NUMBER_PATTERN = /^\d{11}$/;
 const CURRENT_YEAR = new Date().getFullYear();
 
+// Mirrors the "Sky" theme in StudentDashboard.jsx so the research intake
+// (consent, identification, demographics, GAD-7) reads as one continuous
+// experience with the session itself instead of switching to a separate
+// dark-themed flow.
+const T = {
+  bg: '#F7FAF9',
+  sidebar: '#EEF4F6',
+  card: '#FFFFFF',
+  border: '#DCE7EA',
+  accent: '#5E8FBD',
+  accentDark: '#4A7699',
+  textPrimary: '#2E3B44',
+  textSecondary: '#5C6F78',
+  textMuted: '#95A6AC',
+  errorText: '#9C5A3C',
+  errorBg: '#F5E4DA',
+};
+
 function studentNumberError(value) {
   const trimmed = value.trim();
   if (!STUDENT_NUMBER_PATTERN.test(trimmed)) {
@@ -46,6 +64,19 @@ function studentNumberError(value) {
     return `The first 4 digits should be your enrollment year — "${trimmed.slice(0, 4)}" doesn't look right.`;
   }
   return null;
+}
+
+// Shared field wrapper so text inputs/selects look consistent with the rest
+// of the flow (and with the session's own light theme).
+const fieldClasses =
+  'w-full mt-1 rounded-lg p-2.5 text-sm outline-none transition-colors';
+
+function fieldStyle() {
+  return {
+    background: T.card,
+    border: `1px solid ${T.border}`,
+    color: T.textPrimary,
+  };
 }
 
 export default function ResearchFlow() {
@@ -178,18 +209,29 @@ export default function ResearchFlow() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-gray-800 rounded-xl shadow-xl p-8">
-        <h1 className="text-2xl font-bold mb-1">GAIDA Research Participation</h1>
-        <p className="text-gray-400 text-sm mb-6">
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ background: T.bg, color: T.textPrimary }}
+    >
+      <div
+        className="w-full max-w-xl rounded-2xl p-8"
+        style={{ background: T.card, border: `1px solid ${T.border}`, boxShadow: '0 1px 3px rgba(46,59,68,0.06)' }}
+      >
+        <h1 className="text-2xl font-bold mb-1" style={{ color: T.textPrimary }}>
+          GAIDA Research Participation
+        </h1>
+        <p className="text-sm mb-6" style={{ color: T.textSecondary }}>
           Part of an undergraduate thesis study — see below for what that means for you.
         </p>
 
         {step === STEP.CONSENT && (
           <div>
-            <div className="bg-gray-900 rounded-lg p-4 max-h-80 overflow-y-auto text-sm text-gray-300 space-y-3 border border-gray-700">
+            <div
+              className="rounded-lg p-4 max-h-80 overflow-y-auto text-sm space-y-3"
+              style={{ background: T.sidebar, border: `1px solid ${T.border}`, color: T.textSecondary }}
+            >
               <p>
-                <strong>What this is:</strong> This is part of an undergraduate thesis study,
+                <strong style={{ color: T.textPrimary }}>What this is:</strong> This is part of an undergraduate thesis study,
                 "GAIDA: A Web-based Guidance System with Multimodal Anxiety Detection and
                 Virtual Agent," conducted by {RESEARCH_TEAM}. You're invited to chat briefly
                 with GAIDA's virtual counselor and complete a short screening
@@ -200,7 +242,7 @@ export default function ResearchFlow() {
                 research tool and not a medical or diagnostic system.
               </p>
               <p>
-                <strong>What we collect:</strong> Your typed messages, and if you choose to
+                <strong style={{ color: T.textPrimary }}>What we collect:</strong> Your typed messages, and if you choose to
                 use voice input, your voice recordings will be collected and analyzed —
                 speech characteristics such as tone, pitch, and pauses are processed to help
                 infer your emotional state; recordings are processed at the time of your
@@ -213,7 +255,7 @@ export default function ResearchFlow() {
                 the next screen.
               </p>
               <p>
-                <strong>How your data is used and who can see it:</strong> Your responses
+                <strong style={{ color: T.textPrimary }}>How your data is used and who can see it:</strong> Your responses
                 are reviewed by the research team and, for labeling accuracy, by a licensed
                 psychologist or guidance counselor. Your text messages may be processed
                 using external AI services (such as OpenAI's API) to generate GAIDA's
@@ -228,7 +270,7 @@ export default function ResearchFlow() {
                 sensitive details.
               </p>
               <p>
-                <strong>If you're in distress:</strong> An immediate referral protocol is in
+                <strong style={{ color: T.textPrimary }}>If you're in distress:</strong> An immediate referral protocol is in
                 place for high-risk (Crisis-level) responses, and identified high-risk cases
                 are reviewed under counselor supervision. If your session is identified (you
                 gave your student number) and GAIDA detects signs of significant distress,
@@ -240,7 +282,7 @@ export default function ResearchFlow() {
                 directly rather than relying on this session.
               </p>
               <p>
-                <strong>Risks and benefits:</strong> Talking about anxiety or stress may
+                <strong style={{ color: T.textPrimary }}>Risks and benefits:</strong> Talking about anxiety or stress may
                 itself feel uncomfortable for some participants. If GAIDA incorrectly
                 classifies your anxiety level, it may fail to identify that you need
                 additional support, provide false reassurance, cause emotional distress, or
@@ -251,7 +293,7 @@ export default function ResearchFlow() {
                 support future students.
               </p>
               <p>
-                <strong>Your rights:</strong> Participation is voluntary. You may stop at
+                <strong style={{ color: T.textPrimary }}>Your rights:</strong> Participation is voluntary. You may stop at
                 any time by closing this page, with no penalty. If you participated with
                 your student number, you may request access to or deletion of your data at
                 any time by contacting the research team below. If you participated
@@ -261,18 +303,19 @@ export default function ResearchFlow() {
                 this with you before continuing.
               </p>
               <p>
-                <strong>Approval and contact:</strong> This study has been reviewed under
+                <strong style={{ color: T.textPrimary }}>Approval and contact:</strong> This study has been reviewed under
                 {' '}{CERC_REFERENCE}. Questions or concerns may be directed to{' '}
                 {RESEARCH_CONTACT_EMAIL} or the University Guidance Office.
               </p>
             </div>
 
-            <label className="flex items-start gap-2 mt-4 text-sm">
+            <label className="flex items-start gap-2 mt-4 text-sm" style={{ color: T.textPrimary }}>
               <input
                 type="checkbox"
                 checked={consentChecked}
                 onChange={(e) => setConsentChecked(e.target.checked)}
                 className="mt-1"
+                style={{ accentColor: T.accent }}
               />
               I have read the above and voluntarily agree to participate.
             </label>
@@ -280,14 +323,16 @@ export default function ResearchFlow() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => navigate('/')}
-                className="flex-1 py-2 rounded-lg border border-gray-600 hover:bg-gray-700"
+                className="flex-1 py-2 rounded-lg font-medium transition-colors"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.textSecondary }}
               >
                 Back
               </button>
               <button
                 disabled={!consentChecked}
                 onClick={() => setStep(STEP.IDENTIFICATION)}
-                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600 font-semibold"
+                className="flex-1 py-2 rounded-lg font-semibold transition-opacity disabled:opacity-40"
+                style={{ background: T.accent, color: '#FFFFFF' }}
               >
                 Continue
               </button>
@@ -297,19 +342,23 @@ export default function ResearchFlow() {
 
         {step === STEP.IDENTIFICATION && (
           <form onSubmit={handleIdentificationSubmit}>
-            <p className="text-sm text-gray-400 mb-4">
+            <p className="text-sm mb-4" style={{ color: T.textSecondary }}>
               By default, your student number is linked to your session. You can choose to
               participate anonymously instead.
             </p>
 
             <div className="space-y-3">
-              <label className="flex items-center gap-2 p-3 rounded-lg border border-gray-600 cursor-pointer">
+              <label
+                className="flex items-center gap-2 p-3 rounded-lg cursor-pointer"
+                style={{ border: `1px solid ${!anonymous ? T.accent : T.border}`, background: !anonymous ? T.sidebar : T.card }}
+              >
                 <input
                   type="radio"
                   checked={!anonymous}
                   onChange={() => setAnonymous(false)}
+                  style={{ accentColor: T.accent }}
                 />
-                <span className="text-sm">Participate with my student number</span>
+                <span className="text-sm" style={{ color: T.textPrimary }}>Participate with my student number</span>
               </label>
 
               {!anonymous && (
@@ -318,26 +367,32 @@ export default function ResearchFlow() {
                   placeholder="Student number (e.g. 20240001234)"
                   value={studentNumber}
                   onChange={(e) => setStudentNumber(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm"
+                  className={fieldClasses}
+                  style={fieldStyle()}
                 />
               )}
 
-              <label className="flex items-center gap-2 p-3 rounded-lg border border-gray-600 cursor-pointer">
+              <label
+                className="flex items-center gap-2 p-3 rounded-lg cursor-pointer"
+                style={{ border: `1px solid ${anonymous ? T.accent : T.border}`, background: anonymous ? T.sidebar : T.card }}
+              >
                 <input
                   type="radio"
                   checked={anonymous}
                   onChange={() => setAnonymous(true)}
+                  style={{ accentColor: T.accent }}
                 />
-                <span className="text-sm">Participate anonymously</span>
+                <span className="text-sm" style={{ color: T.textPrimary }}>Participate anonymously</span>
               </label>
 
               {anonymous && (
                 <div className="pl-2 space-y-2">
-                  <label className="flex items-center gap-2 text-xs text-gray-400">
+                  <label className="flex items-center gap-2 text-xs" style={{ color: T.textSecondary }}>
                     <input
                       type="checkbox"
                       checked={hasExistingCode}
                       onChange={(e) => setHasExistingCode(e.target.checked)}
+                      style={{ accentColor: T.accent }}
                     />
                     I have a code from a previous anonymous session
                   </label>
@@ -347,27 +402,34 @@ export default function ResearchFlow() {
                       placeholder="Your previous code"
                       value={existingCode}
                       onChange={(e) => setExistingCode(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm"
+                      className={fieldClasses}
+                      style={fieldStyle()}
                     />
                   )}
                 </div>
               )}
             </div>
 
-            {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+            {error && (
+              <p className="text-sm mt-3 rounded-lg px-3 py-2" style={{ color: T.errorText, background: T.errorBg }}>
+                {error}
+              </p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button
                 type="button"
                 onClick={() => setStep(STEP.CONSENT)}
-                className="flex-1 py-2 rounded-lg border border-gray-600 hover:bg-gray-700"
+                className="flex-1 py-2 rounded-lg font-medium transition-colors"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.textSecondary }}
               >
                 Back
               </button>
               <button
                 type="submit"
                 disabled={checkingParticipant}
-                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-40 font-semibold"
+                className="flex-1 py-2 rounded-lg font-semibold transition-opacity disabled:opacity-40"
+                style={{ background: T.accent, color: '#FFFFFF' }}
               >
                 {checkingParticipant ? 'Checking…' : 'Continue'}
               </button>
@@ -377,17 +439,18 @@ export default function ResearchFlow() {
 
         {step === STEP.DEMOGRAPHICS && (
           <form onSubmit={handleDemographicsSubmit}>
-            <p className="text-sm text-gray-400 mb-4">
+            <p className="text-sm mb-4" style={{ color: T.textSecondary }}>
               All optional — leave any field blank if you'd rather not say.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="text-sm text-gray-300">Year level</label>
+                <label className="text-sm" style={{ color: T.textSecondary }}>Year level</label>
                 <select
                   value={demographics.year_level}
                   onChange={(e) => setDemographics({ ...demographics, year_level: e.target.value })}
-                  className="w-full mt-1 bg-gray-900 border border-gray-600 rounded-lg p-2"
+                  className={fieldClasses}
+                  style={fieldStyle()}
                 >
                   <option value="">Prefer not to say</option>
                   <option value="1">1st year</option>
@@ -399,22 +462,24 @@ export default function ResearchFlow() {
               </div>
 
               <div>
-                <label className="text-sm text-gray-300">Program</label>
+                <label className="text-sm" style={{ color: T.textSecondary }}>Program</label>
                 <input
                   type="text"
                   placeholder="e.g. BS Psychology"
                   value={demographics.program}
                   onChange={(e) => setDemographics({ ...demographics, program: e.target.value })}
-                  className="w-full mt-1 bg-gray-900 border border-gray-600 rounded-lg p-2"
+                  className={fieldClasses}
+                  style={fieldStyle()}
                 />
               </div>
 
               <div>
-                <label className="text-sm text-gray-300">Gender</label>
+                <label className="text-sm" style={{ color: T.textSecondary }}>Gender</label>
                 <select
                   value={demographics.gender}
                   onChange={(e) => setDemographics({ ...demographics, gender: e.target.value })}
-                  className="w-full mt-1 bg-gray-900 border border-gray-600 rounded-lg p-2"
+                  className={fieldClasses}
+                  style={fieldStyle()}
                 >
                   <option value="">Prefer not to say</option>
                   <option value="female">Female</option>
@@ -425,13 +490,14 @@ export default function ResearchFlow() {
               </div>
 
               <div>
-                <label className="text-sm text-gray-300">Region / hometown</label>
+                <label className="text-sm" style={{ color: T.textSecondary }}>Region / hometown</label>
                 <input
                   type="text"
                   placeholder="e.g. Metro Manila, Cebu, Davao"
                   value={demographics.region}
                   onChange={(e) => setDemographics({ ...demographics, region: e.target.value })}
-                  className="w-full mt-1 bg-gray-900 border border-gray-600 rounded-lg p-2"
+                  className={fieldClasses}
+                  style={fieldStyle()}
                 />
               </div>
             </div>
@@ -440,13 +506,15 @@ export default function ResearchFlow() {
               <button
                 type="button"
                 onClick={() => setStep(STEP.IDENTIFICATION)}
-                className="flex-1 py-2 rounded-lg border border-gray-600 hover:bg-gray-700"
+                className="flex-1 py-2 rounded-lg font-medium transition-colors"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.textSecondary }}
               >
                 Back
               </button>
               <button
                 type="submit"
-                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+                className="flex-1 py-2 rounded-lg font-semibold transition-opacity"
+                style={{ background: T.accent, color: '#FFFFFF' }}
               >
                 Continue
               </button>
@@ -456,51 +524,61 @@ export default function ResearchFlow() {
 
         {step === STEP.GAD7 && (
           <div>
-            <p className="text-sm text-gray-400 mb-4">
+            <p className="text-sm mb-4" style={{ color: T.textSecondary }}>
               Over the last 2 weeks, how often have you been bothered by the following?
             </p>
 
             <div className="space-y-5 max-h-96 overflow-y-auto pr-1">
               {GAD7_QUESTIONS.map((q, i) => (
                 <div key={i}>
-                  <p className="text-sm mb-2">{i + 1}. {q}</p>
+                  <p className="text-sm mb-2" style={{ color: T.textPrimary }}>{i + 1}. {q}</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {GAD7_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => {
-                          const next = [...answers];
-                          next[i] = opt.value;
-                          setAnswers(next);
-                        }}
-                        className={`text-xs py-2 px-2 rounded-lg border ${
-                          answers[i] === opt.value
-                            ? 'bg-red-600 border-red-600'
-                            : 'border-gray-600 hover:bg-gray-700'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    {GAD7_OPTIONS.map((opt) => {
+                      const selected = answers[i] === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            const next = [...answers];
+                            next[i] = opt.value;
+                            setAnswers(next);
+                          }}
+                          className="text-xs py-2 px-2 rounded-lg font-medium transition-colors"
+                          style={
+                            selected
+                              ? { background: T.accent, color: '#FFFFFF', border: `1px solid ${T.accent}` }
+                              : { background: T.card, color: T.textSecondary, border: `1px solid ${T.border}` }
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
             </div>
 
-            {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
+            {error && (
+              <p className="text-sm mt-4 rounded-lg px-3 py-2" style={{ color: T.errorText, background: T.errorBg }}>
+                {error}
+              </p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setStep(skippedDemographics ? STEP.IDENTIFICATION : STEP.DEMOGRAPHICS)}
-                className="flex-1 py-2 rounded-lg border border-gray-600 hover:bg-gray-700"
+                className="flex-1 py-2 rounded-lg font-medium transition-colors"
+                style={{ background: T.card, border: `1px solid ${T.border}`, color: T.textSecondary }}
               >
                 Back
               </button>
               <button
                 disabled={!allAnswered}
                 onClick={handleFinalSubmit}
-                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600 font-semibold"
+                className="flex-1 py-2 rounded-lg font-semibold transition-opacity disabled:opacity-40"
+                style={{ background: T.accent, color: '#FFFFFF' }}
               >
                 Start Chat
               </button>
@@ -509,28 +587,33 @@ export default function ResearchFlow() {
         )}
 
         {step === STEP.SUBMITTING && (
-          <p className="text-center text-gray-400 py-10">Setting up your session…</p>
+          <p className="text-center py-10" style={{ color: T.textSecondary }}>Setting up your session…</p>
         )}
 
         {step === STEP.SAVE_CODE && (
           <div>
-            <p className="text-sm text-gray-300 mb-3">
+            <p className="text-sm mb-3" style={{ color: T.textSecondary }}>
               Save this code — it's the only way to reference this session later
               (to request deletion, or to continue as the same anonymous participant
               next time). We have no other way to identify your session.
             </p>
-            <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 text-center text-xl font-mono tracking-widest mb-4">
+            <div
+              className="rounded-lg p-4 text-center text-xl font-mono tracking-widest mb-4"
+              style={{ background: T.sidebar, border: `1px solid ${T.border}`, color: T.textPrimary }}
+            >
               {issuedCode}
             </div>
             <button
               onClick={() => navigate('/student-dashboard')}
-              className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold"
+              className="w-full py-2 rounded-lg font-semibold transition-opacity"
+              style={{ background: T.accent, color: '#FFFFFF' }}
             >
               I've saved my code — Continue
             </button>
             <button
               onClick={() => navigate('/research/withdraw')}
-              className="w-full mt-3 text-xs text-gray-500 hover:text-gray-300 underline"
+              className="w-full mt-3 text-xs underline"
+              style={{ color: T.textMuted }}
             >
               Changed your mind? Withdraw and delete your data
             </button>
