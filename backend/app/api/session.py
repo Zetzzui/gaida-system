@@ -112,7 +112,14 @@ class ConnectionManager:
 
     def disconnect(self, session_id: str, websocket: WebSocket):
         if session_id in self.active_connections:
-            self.active_connections[session_id].remove(websocket)
+            conns = self.active_connections[session_id]
+            if websocket in conns:
+                conns.remove(websocket)
+            # Drop the entry entirely once its connection list is empty —
+            # otherwise every session_id that ever connected leaves a
+            # permanent (if tiny) dict entry for the life of the process.
+            if not conns:
+                del self.active_connections[session_id]
 
     async def broadcast(self, session_id: str, message: dict):
         conns = self.active_connections.get(session_id, [])
@@ -155,9 +162,19 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query("
     # The frontend connects with ?token=<session_token>. Unauthenticated
     # sockets are rejected up front so anonymous browsers can't eavesdrop on
     # live sessions.
-    if not validate_token(token):
+    user = validate_token(token)
+    if not user:
         await websocket.close(code=4401)
         return
+    # Ownership check — mirrors require_session_owner() used by the REST
+    # endpoints in this file. Without this, any authenticated student who
+    # learns another student's session_id could connect and read their
+    # live chat messages. Counselors are exempt, same as elsewhere.
+    if user.get("role") != "counselor":
+        session = get_session(session_id)
+        if session and session.get("user_id") and session["user_id"] != user["user_id"]:
+            await websocket.close(code=4403)
+            return
     # WebSocket handlers run on the server's main event loop — capture it so
     # sync endpoints running in worker threads can still schedule broadcasts.
     set_main_loop(asyncio.get_running_loop())
