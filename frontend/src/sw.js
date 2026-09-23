@@ -8,7 +8,7 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-const CACHE_VERSION = "gaida-v2";
+const CACHE_VERSION = "gaida-v3";
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const DATA_CACHE    = `${CACHE_VERSION}-data`;
 const QUEUE_STORE   = "gaida-offline-queue";
@@ -23,6 +23,9 @@ const APP_SHELL_FILES = [
   "/index.html",
   "/offline.html",
   "/manifest.json",
+  "/favicon.ico",
+  "/icons/favicon.svg",
+  "/icons/favicon-32x32.png",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
 ];

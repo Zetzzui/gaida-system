@@ -273,6 +273,9 @@ export default function StudentDashboard() {
 
   // Per-message helpfulness feedback: message index -> 'up' | 'down'
   const [messageRatings, setMessageRatings] = useState({});
+  // Current session id — kept in state so child components (e.g. VoiceInput)
+  // always receive the latest value instead of a stale localStorage read.
+  const [sessionId, setSessionId] = useState(() => localStorage.getItem('session_id'));
 
   const [theme, setTheme] = useState(
     () => THEMES[localStorage.getItem('gaida_theme')] || THEMES.purple
@@ -284,6 +287,7 @@ export default function StudentDashboard() {
   const inputRef           = useRef(null);
   const lastCounselorCount = useRef(0);
   const typingTimeout      = useRef(null);
+  const typingActiveRef    = useRef(false);
   const wasCounselorActive = useRef(false);
 
   const severityConfig = SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.Normal;
@@ -326,6 +330,20 @@ export default function StudentDashboard() {
     timerRef.current = setInterval(() => setSessionTime(t => t + 1), 1000);
     return () => clearInterval(timerRef.current);
   }, [navigate]);
+
+  // Keep the sidebar in sync with the desktop/mobile breakpoint so rotating
+  // a tablet or resizing the window never leaves it stuck open or closed.
+  useEffect(() => {
+    let prevWidth = window.innerWidth;
+    const onResize = () => {
+      const w = window.innerWidth;
+      if (prevWidth < 1024 && w >= 1024) setSidebarOpen(true);
+      else if (prevWidth >= 1024 && w < 1024) setSidebarOpen(false);
+      prevWidth = w;
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // ── End the session when the student leaves the page ─────────────
   // pagehide fires on tab close, refresh, and navigating away (but NOT on SPA
@@ -425,35 +443,30 @@ export default function StudentDashboard() {
     }).catch((e) => { console.error('Typing indicator error:', e); });
   }, []);
 
+  // Auto-grow the composer (with a cap) so Shift+Enter multiline input is
+  // actually visible instead of being clipped inside a tiny fixed textarea.
+  const autoGrowTextarea = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  };
+
   const handleInputChange = (e) => {
-    setInput(e.target.value);
-    fireTyping(true);
-    clearTimeout(typingTimeout.current);
-    typingTimeout.current = setTimeout(() => fireTyping(false), TYPING_DEBOUNCE);
-  };
+    const value = e.target.value;
+    setInput(value);
+    autoGrowTextarea(e.target);
 
-  const handleEndSession = () => {
-    setShowRating(true);
-  };
-
-  const submitRating = async (rating) => {
-    const sessionId = localStorage.getItem('session_id');
-    if (sessionId) {
-      try {
-        await apiFetch(`${BACKEND}/api/counselor/session/rate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sessionId,
-            wellbeing_rating: rating,
-            severity_at_end: severity,
-          }),
-        });
-      } catch (e) {
-        console.error('Submit rating error:', e);
-      }
+    // Fire the "typing" indicator once per burst instead of on every
+    // keystroke (avoids spamming the backend for each character).
+    if (!typingActiveRef.current) {
+      typingActiveRef.current = true;
+      fireTyping(true);
     }
-    confirmEndSession();
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      typingActiveRef.current = false;
+      fireTyping(false);
+    }, TYPING_DEBOUNCE);
   };
 
   const sendMessage = async (textOverride) => {
@@ -462,9 +475,11 @@ export default function StudentDashboard() {
 
     clearTimeout(typingTimeout.current);
     fireTyping(false);
+    typingActiveRef.current = false;
 
     setMessages(prev => [...prev, { role: 'user', text, timestamp: new Date() }]);
     setInput('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setSending(true);
     setStreamingStarted(false);
     if (window.innerWidth < 1024) setSidebarOpen(false);
@@ -527,7 +542,10 @@ export default function StudentDashboard() {
           });
         } else if (event.type === 'done') {
           const result = event.result || {};
-          if (result.session_id)       localStorage.setItem('session_id', result.session_id);
+          if (result.session_id) {
+            localStorage.setItem('session_id', result.session_id);
+            setSessionId(result.session_id);
+          }
           if (result.severity)         setSeverity(result.severity);
           if (result.counselor_active) setCounselorActive(true);
 
@@ -564,8 +582,34 @@ export default function StudentDashboard() {
   };
 
   const handleRequestCounselor = async () => {
-    const sessionId = localStorage.getItem('session_id');
-    if (!sessionId) return;
+    if (requestingCounselor) return;
+
+    // If the student hasn't sent a message yet there is no session to attach
+    // the counselor request to. Auto-create one first so the button always
+    // visibly does something instead of silently doing nothing.
+    let sessionId = localStorage.getItem('session_id');
+    if (!sessionId) {
+      try {
+        const res = await apiFetch(`${BACKEND}/api/session/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: localStorage.getItem('student_id') }),
+        });
+        if (!res.ok) throw new Error('Could not start a session.');
+        const data = await res.json();
+        sessionId = data.session_id;
+        localStorage.setItem('session_id', sessionId);
+        setSessionId(sessionId);
+      } catch (e) {
+        console.error('Start session error:', e);
+        setMessages(prev => [...prev, {
+          role: 'system',
+          text: "Couldn't reach the counselor right now. Try sending a message first.",
+        }]);
+        return;
+      }
+    }
+
     setRequestingCounselor(true);
     try {
       const res = await apiFetch(`${BACKEND}/api/counselor/request-counselor`, {
@@ -646,9 +690,10 @@ export default function StudentDashboard() {
   };
 
   const handleWellbeingRating = async (value) => {
+    if (ratingSubmitted) return;
     setRatingSubmitted(true);
     const sessionId = localStorage.getItem('session_id');
-    if (sessionId) {
+    if (sessionId && value > 0) {
       try {
         await apiFetch(`${BACKEND}/api/counselor/session/rate`, {  
           method: 'POST',
@@ -663,7 +708,7 @@ export default function StudentDashboard() {
         console.error('Wellbeing rating error:', e);
       }
     }
-    setTimeout(() => confirmEndSession(), 1800);
+    setTimeout(() => confirmEndSession(), value > 0 ? 1800 : 500);
   };
 
   const switchTheme = (key) => {
@@ -676,8 +721,15 @@ export default function StudentDashboard() {
   // ─────────────────────────────────────────────────────────────
   return (
     <div
-      className="min-h-dvh max-h-dvh flex overflow-hidden font-sans"
-      style={{ background: theme.bg }}
+      className="h-screen min-h-screen max-h-screen flex overflow-hidden font-sans"
+      style={{
+        background: theme.bg,
+        // dvh-handling browsers get the modern unit; older ones fall back to
+        // the 100vh classes above (invalid inline values are dropped).
+        height: '100dvh',
+        minHeight: '100dvh',
+        maxHeight: '100dvh',
+      }}
     >
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -694,7 +746,7 @@ export default function StudentDashboard() {
           fixed lg:relative z-30 lg:z-auto top-0 left-0
           transition-transform duration-300 ease-in-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          w-64 flex flex-col flex-shrink-0 h-full min-h-dvh
+          w-64 flex flex-col flex-shrink-0 h-full min-h-dvh overflow-hidden
         `}
         style={{ background: theme.sidebar, borderRight: `1px solid ${theme.border}` }}
       >
@@ -726,7 +778,11 @@ export default function StudentDashboard() {
           </button>
         </div>
 
-        {/* Session stats */}
+        {/* Scrollable middle section — keeps the sidebar usable on short screens
+            (small laptops, mobile landscape, expanded settings) while End
+            Session stays pinned at the bottom. */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Session stats */}
         <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
           <p className="text-xs uppercase tracking-widest mb-3" style={{ color: theme.textMuted }}>Session</p>
           <div className="space-y-2">
@@ -825,7 +881,7 @@ export default function StudentDashboard() {
         </div>
 
         {/* Settings */}
-        <div className="p-4 flex-1">
+        <div className="p-4">
           <button
             onClick={() => setShowSettings(p => !p)}
             className="flex items-center justify-between w-full"
@@ -875,6 +931,7 @@ export default function StudentDashboard() {
             </div>
           )}
         </div>
+        </div>
 
         {/* End Session */}
         <div className="p-4" style={{ borderTop: `1px solid ${theme.border}` }}>
@@ -915,7 +972,7 @@ export default function StudentDashboard() {
             </svg>
           </button>
 
-          <span className="text-xs sm:text-sm font-bold tracking-widest truncate" style={{ color: theme.textPrimary }}>
+          <span className="text-xs sm:text-sm font-bold tracking-widest truncate min-w-0" style={{ color: theme.textPrimary }}>
             VIRTUAL COUNSELOR
           </span>
 
@@ -955,6 +1012,42 @@ export default function StudentDashboard() {
               </div>
               <p className="text-sm" style={{ color: theme.textPrimary }}>Start the conversation.</p>
               <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>This conversation stays between you and the Guidance Office.</p>
+
+              {/* Quick-start prompts — one-tap conversation starters */}
+              <div className="flex flex-col gap-2 mt-6 w-full max-w-[280px]">
+                {QUICK_START_PROMPTS.map((p) => (
+                  <button
+                    key={p.text}
+                    onClick={() => sendMessage(p.text)}
+                    disabled={sending}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl transition-all duration-200 disabled:opacity-50"
+                    style={{
+                      background: theme.sidebar,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.textSecondary,
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.border = `1px solid ${theme.accent}`;
+                      e.currentTarget.style.color = theme.textPrimary;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.border = `1px solid ${theme.border}`;
+                      e.currentTarget.style.color = theme.textSecondary;
+                    }}
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {p.icon === 'school' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 14l9-5-9-5-9 5 9 5zm0 0v6m-7 0h14" />
+                      ) : p.icon === 'message-2' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                      )}
+                    </svg>
+                    {p.text}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1048,11 +1141,11 @@ export default function StudentDashboard() {
               placeholder="Type your message..."
               rows={1}
               className="flex-1 resize-none py-1 text-base sm:text-sm leading-relaxed focus:outline-none"
-              style={{ minHeight: '32px', maxHeight: '96px', background: 'transparent', color: theme.textPrimary }}
+              style={{ minHeight: '40px', maxHeight: '96px', background: 'transparent', color: theme.textPrimary }}
             />
             <div className="flex items-center gap-1.5 flex-shrink-0 pb-0.5">
               <VoiceInput
-                sessionId={localStorage.getItem('session_id')}
+                sessionId={sessionId}
                 onTranscript={(text) => { setInput(text); sendMessage(text); }}
                 onStatusChange={setVoiceStatus}
               />
@@ -1094,7 +1187,7 @@ export default function StudentDashboard() {
           style={{ background: 'rgba(0,0,0,0.75)' }}
         >
           <div
-            className="w-full max-w-sm mx-4 rounded-2xl p-6 flex flex-col items-center gap-5"
+            className="w-[calc(100%-2rem)] max-w-sm mx-4 rounded-2xl p-6 flex flex-col items-center gap-5"
             style={{ background: theme.sidebar, border: `1px solid ${theme.border}` }}
           >
             {ratingSubmitted ? (
@@ -1120,7 +1213,7 @@ export default function StudentDashboard() {
                   </p>
                 </div>
 
-                <div className="flex gap-3 w-full justify-center">
+                <div className="flex gap-1.5 sm:gap-3 w-full justify-center">
                   {WELLBEING_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -1134,8 +1227,8 @@ export default function StudentDashboard() {
                         transform: hoveredRating === opt.value ? 'translateY(-2px)' : 'none',
                       }}
                     >
-                      <span className="text-2xl">{opt.emoji}</span>
-                      <span className="text-xs text-center leading-tight" style={{ color: theme.textSecondary }}>
+                      <span className="text-lg sm:text-2xl">{opt.emoji}</span>
+                      <span className="text-[11px] sm:text-xs text-center leading-tight" style={{ color: theme.textSecondary }}>
                         {opt.label}
                       </span>
                     </button>
