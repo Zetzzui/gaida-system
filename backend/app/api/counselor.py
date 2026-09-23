@@ -3,16 +3,18 @@ Counselor API routes: alerts, live sessions, chat mirroring/typing indicators,
 counselor takeover/handoff, session notes, analytics, and PDF export.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from io import BytesIO
+import json
 from typing import Optional
 
 import re
 import threading
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response as FastAPIResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response as FastAPIResponse, StreamingResponse
 from app.utils.auth import get_current_user, require_role
 from pydantic import BaseModel
 from reportlab.lib import colors
@@ -1570,3 +1572,190 @@ def soft_delete_cases(payload: DeleteCases, user: dict = Depends(require_role("c
         return {"ok": True, "note": "not found in memory, supabase update attempted"}
     
     return {"ok": True}
+
+
+# ===========================================================================
+# Realtime push (Server-Sent Events)
+#
+# One shared background watcher fingerprints the three streams the counselor
+# dashboard renders — alerts, active sessions, welfare checks — and pushes a
+# named SSE event to every connected EventSource client whenever a fingerprint
+# changes. The frontend treats each event as "refetch now", so a student
+# pressing "Talk to a counselor" or tipping into High/Crisis appears on an
+# already-open dashboard within ~1-2 seconds: no page reload, and it keeps
+# working even when the tab is in the background (browsers throttle
+# setInterval there, but live network streams still deliver).
+#
+# Deliberately decoupled from the REST endpoints: no mutation handler has to
+# know about subscribers — the watcher just diffs shared in-memory state — and
+# a watcher hiccup can never break a chat/alert write.
+# ===========================================================================
+_SSE_SUBSCRIBERS = set()        # connected counselor clients (asyncio.Queue each)
+_SSE_WATCHER = None             # single shared asyncio task, started lazily
+_SSE_POLL_SECONDS = 1.5
+_SSE_KEEPALIVE_SECONDS = 15
+_SSE_QUEUE_MAX = 100
+
+
+def _sse_session_severity(session: dict) -> str:
+    """Mirror of the /sessions/active severity logic so fingerprint changes
+    line up with what the dashboard actually renders."""
+    meta = session.get("meta", {})
+    severity = meta.get("peak_severity") or meta.get("severity") or "Normal"
+    confidence = meta.get("running_confidence", 0.3)
+    if not severity or severity == "Normal":
+        if confidence >= 0.75:
+            severity = "High"
+        elif confidence >= 0.60:
+            severity = "Moderate"
+        elif confidence >= 0.45:
+            severity = "Low"
+        else:
+            severity = "Normal"
+    return severity
+
+
+def _sse_alerts_fingerprint() -> tuple:
+    return tuple(
+        (
+            a.get("session_id"),
+            a.get("status"),
+            a.get("severity"),
+            bool(a.get("acknowledged")),
+            a.get("escalation_level"),
+            a.get("timestamp"),
+            a.get("last_message"),
+        )
+        for a in ALERTS
+        if not a.get("deleted")
+    )
+
+
+def _sse_sessions_fingerprint() -> tuple:
+    from app.services.session_manager import list_active_sessions
+
+    out = []
+    for session in list_active_sessions():
+        meta = session.get("meta", {})
+        if meta.get("resolved"):
+            continue
+        out.append(
+            (
+                session.get("session_id"),
+                _sse_session_severity(session),
+                meta.get("assigned_counselor_id"),
+                bool(session.get("active")),
+            )
+        )
+    return tuple(sorted(out))
+
+
+def _sse_welfare_fingerprint() -> tuple:
+    # get_sessions_needing_welfare_check throttles its own Supabase fallback,
+    # so calling it every poll tick is cheap.
+    from app.services.session_manager import get_sessions_needing_welfare_check
+
+    sessions = get_sessions_needing_welfare_check()
+    return tuple(sorted(s.get("session_id") for s in sessions))
+
+
+async def _sse_watcher():
+    """Shared loop: diff fingerprints and broadcast change events to every
+    connected counselor dashboard."""
+    last_alerts = _sse_alerts_fingerprint()
+    last_sessions = _sse_sessions_fingerprint()
+    last_welfare = _sse_welfare_fingerprint()
+
+    while True:
+        try:
+            await asyncio.sleep(_SSE_POLL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+
+        changed = []
+        try:
+            fa = _sse_alerts_fingerprint()
+            if fa != last_alerts:
+                changed.append("alerts")
+            last_alerts = fa
+        except Exception as e:
+            print(f"[counselor] SSE alerts fingerprint error: {e}")
+        try:
+            fs = _sse_sessions_fingerprint()
+            if fs != last_sessions:
+                changed.append("sessions")
+            last_sessions = fs
+        except Exception as e:
+            print(f"[counselor] SSE sessions fingerprint error: {e}")
+        try:
+            fw = _sse_welfare_fingerprint()
+            if fw != last_welfare:
+                changed.append("welfare")
+            last_welfare = fw
+        except Exception as e:
+            print(f"[counselor] SSE welfare fingerprint error: {e}")
+
+        if not changed:
+            continue
+
+        message = json.dumps({"changed": changed})
+        for queue in list(_SSE_SUBSCRIBERS):
+            try:
+                queue.put_nowait(message)
+            except asyncio.QueueFull:
+                pass  # slow client — it re-syncs via onopen or the poll fallback
+
+
+@router.get("/events")
+async def counselor_events(token: str = Query(...)):
+    """SSE stream for the counselor dashboard.
+
+    Authenticates via `?token=` because EventSource cannot set Authorization
+    headers (same pattern as the WebSocket handshake). Emits the named SSE
+    events `alerts`, `sessions`, and `welfare` whenever the corresponding data
+    changes, plus periodic keepalive comments so proxies don't drop the idle
+    connection.
+    """
+    from app.utils.auth import validate_token
+
+    user = validate_token(token)
+    if not user or user.get("role") != "counselor":
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    global _SSE_WATCHER
+    if _SSE_WATCHER is None or _SSE_WATCHER.done():
+        _SSE_WATCHER = asyncio.create_task(_sse_watcher())
+
+    queue = asyncio.Queue(maxsize=_SSE_QUEUE_MAX)
+    _SSE_SUBSCRIBERS.add(queue)
+
+    async def event_generator():
+        try:
+            # Confirm the stream is live so the client can re-sync immediately.
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                try:
+                    raw = await asyncio.wait_for(queue.get(), timeout=_SSE_KEEPALIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                try:
+                    changed = json.loads(raw).get("changed", [])
+                except (ValueError, TypeError):
+                    continue
+                if "alerts" in changed:
+                    yield "event: alerts\ndata: {}\n\n"
+                if "sessions" in changed:
+                    yield "event: sessions\ndata: {}\n\n"
+                if "welfare" in changed:
+                    yield "event: welfare\ndata: {}\n\n"
+        except asyncio.CancelledError:
+            raise
+        finally:
+            _SSE_SUBSCRIBERS.discard(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

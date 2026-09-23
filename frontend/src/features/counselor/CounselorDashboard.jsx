@@ -1505,6 +1505,34 @@ export default function CounselorDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Realtime push via SSE: the backend broadcasts named events when alerts,
+  // active sessions, or welfare checks change, so an open dashboard updates —
+  // and beeps/notifies on new alerts — without a reload, even in a background
+  // tab (browsers throttle setInterval there but not live network streams).
+  // The 2s poll above stays as a fallback for when SSE is unavailable.
+  useEffect(() => {
+    const token = localStorage.getItem('counselor_token');
+    if (!token) return;
+    let es = null;
+    try {
+      es = new EventSource(`${BACKEND}/api/counselor/events?token=${encodeURIComponent(token)}`);
+      es.addEventListener('alerts', fetchAlerts);
+      es.addEventListener('sessions', fetchSessions);
+      es.addEventListener('welfare', fetchWelfare);
+      // EventSource auto-reconnects on drop; re-sync on every (re)connect.
+      es.onopen = () => {
+        fetchAlerts();
+        fetchSessions();
+        fetchWelfare();
+      };
+    } catch {
+      es = null;
+    }
+    return () => {
+      if (es) es.close();
+    };
+  }, []);
+
   useEffect(() => {
     if (Notification.permission === 'default') {
       Notification.requestPermission();
@@ -1526,7 +1554,7 @@ export default function CounselorDashboard() {
           playAlertSound();
           if (Notification.permission === 'granted') {
             new Notification('GAIDA Alert', {
-              body: `${freshIds.length} new High/Crisis alert${freshIds.length > 1 ? 's' : ''} need attention`,
+              body: `${freshIds.length} new alert${freshIds.length > 1 ? 's' : ''} need attention`,
               icon: '/favicon.ico',
             });
           }
