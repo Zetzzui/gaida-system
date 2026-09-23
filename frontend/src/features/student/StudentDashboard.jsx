@@ -12,83 +12,94 @@ import apiFetch from '../../api';
 const POLL_INTERVAL = 3000;
 const TYPING_DEBOUNCE = 2000;
 
+// Calm, light palettes. Cool blues and soft greens lead; lavender and sand
+// are softer secondary options. Keys stay stable so any saved preference
+// still resolves to a theme.
 const THEMES = {
-  purple: {
-    name: 'purple',
-    preview: '#7c6af7',
-    bg: '#0d0b1a',
-    sidebar: '#12102a',
-    border: '#1e1a40',
-    accent: '#7c6af7',
-    accentDark: '#3d2fa0',
-    textPrimary: '#a89cf7',
-    textSecondary: '#6b5fd4',
-    textMuted: '#3d3580',
-    userBubble: '#3d2fa0',
-    userText: '#e8e4ff',
-    botBubble: '#12102a',
-    botText: '#a89cf7',
+  sky: {
+    name: 'sky',
+    label: 'Sky',
+    preview: '#6E9BC2',
+    bg: '#F7FAF9',
+    sidebar: '#EEF4F6',
+    card: '#FFFFFF',
+    border: '#DCE7EA',
+    accent: '#5E8FBD',
+    accentDark: '#4A7699',
+    textPrimary: '#2E3B44',
+    textSecondary: '#5C6F78',
+    textMuted: '#95A6AC',
+    userBubble: '#DCEAF3',
+    userText: '#28414F',
+    botBubble: '#FFFFFF',
+    botText: '#2E3B44',
   },
-  navy: {
-    name: 'navy',
-    preview: '#378add',
-    bg: '#0c1220',
-    sidebar: '#101929',
-    border: '#1a2f4a',
-    accent: '#378add',
-    accentDark: '#1a4a7a',
-    textPrimary: '#93b4d9',
-    textSecondary: '#4a7aaa',
-    textMuted: '#1e3a5a',
-    userBubble: '#1a4a7a',
-    userText: '#e0eef8',
-    botBubble: '#101929',
-    botText: '#93b4d9',
+  sage: {
+    name: 'sage',
+    label: 'Sage',
+    preview: '#7FAE93',
+    bg: '#F7FAF6',
+    sidebar: '#EEF5EF',
+    card: '#FFFFFF',
+    border: '#DCEBDF',
+    accent: '#6BA187',
+    accentDark: '#54896D',
+    textPrimary: '#2C3B32',
+    textSecondary: '#57695D',
+    textMuted: '#93A899',
+    userBubble: '#DCF0E3',
+    userText: '#25402F',
+    botBubble: '#FFFFFF',
+    botText: '#2C3B32',
   },
-  charcoal: {
-    name: 'charcoal',
-    preview: '#ba7517',
-    bg: '#111010',
-    sidebar: '#1a1817',
-    border: '#2d2520',
-    accent: '#ba7517',
-    accentDark: '#7c4a2a',
-    textPrimary: '#d4b896',
-    textSecondary: '#7a6050',
-    textMuted: '#3d2e28',
-    userBubble: '#7c4a2a',
-    userText: '#fdf0e0',
-    botBubble: '#1a1817',
-    botText: '#d4b896',
+  lavender: {
+    name: 'lavender',
+    label: 'Lavender',
+    preview: '#9490C9',
+    bg: '#F9F8FB',
+    sidebar: '#F0EEF7',
+    card: '#FFFFFF',
+    border: '#E3E0F1',
+    accent: '#8480BD',
+    accentDark: '#6A66A0',
+    textPrimary: '#33314A',
+    textSecondary: '#615E7D',
+    textMuted: '#9E9BB8',
+    userBubble: '#E5E3F5',
+    userText: '#332F52',
+    botBubble: '#FFFFFF',
+    botText: '#33314A',
   },
-  forest: {
-    name: 'forest',
-    preview: '#5dcaa5',
-    bg: '#0a1a14',
-    sidebar: '#0f2318',
-    border: '#1a3527',
-    accent: '#5dcaa5',
-    accentDark: '#1d6a4a',
-    textPrimary: '#a8d9c0',
-    textSecondary: '#3e7a5e',
-    textMuted: '#2d5a45',
-    userBubble: '#1d6a4a',
-    userText: '#e8f5ee',
-    botBubble: '#0f2318',
-    botText: '#a8d9c0',
+  sand: {
+    name: 'sand',
+    label: 'Sand',
+    preview: '#C9A876',
+    bg: '#FBF8F1',
+    sidebar: '#F5EFE2',
+    card: '#FFFFFF',
+    border: '#EBE0CB',
+    accent: '#BC9A63',
+    accentDark: '#9C7E4E',
+    textPrimary: '#40372A',
+    textSecondary: '#6C6151',
+    textMuted: '#A69985',
+    userBubble: '#F1E5CD',
+    userText: '#40372A',
+    botBubble: '#FFFFFF',
+    botText: '#40372A',
   },
 };
 
+// Calm severity treatment. Nothing here uses alarm red; red is reserved for
+// the emergency / end-session exit only.
 const SEVERITY_CONFIG = {
-  Crisis:   { bar: 'bg-red-600',     text: 'text-red-400',     border: 'border-red-800',     width: 'w-full' },
-  High:     { bar: 'bg-amber-500',   text: 'text-amber-400',   border: 'border-amber-800',   width: 'w-4/5' },
-  Moderate: { bar: 'bg-teal-400',    text: 'text-teal-300',    border: 'border-teal-700',    width: 'w-2/4' },
-  Low:      { bar: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-800', width: 'w-1/4' },
-  Normal:   { bar: 'bg-slate-500',   text: 'text-slate-400',   border: 'border-slate-700',   width: 'w-0'   },
+  Crisis:   { fill: '#C97B57', text: '#9C5A3C', chip: '#F5E4DA', width: '100%' },
+  High:     { fill: '#D4A24C', text: '#9C7A34', chip: '#F6ECD6', width: '80%'  },
+  Moderate: { fill: '#5FA6A6', text: '#3F7676', chip: '#DFEFEF', width: '50%'  },
+  Low:      { fill: '#7FB088', text: '#4F7D58', chip: '#E2F0E4', width: '25%'  },
+  Normal:   { fill: '#A9B3B8', text: '#6E7A80', chip: '#E9EDEE', width: '6%'   },
 };
 
-// Quick-start prompts shown when the conversation is empty.
-// Lowers the barrier for a student who doesn't know how to start.
 const QUICK_START_PROMPTS = [
   { icon: 'school',      text: "I'm stressed about my exams" },
   { icon: 'message-2',   text: "I just want to talk to someone" },
@@ -121,6 +132,33 @@ const formatMsgTime = (date) => {
 // Sub-components
 // ─────────────────────────────────────────────────────────────
 
+// Shared keyframes for the agent's idle "breathing" animation and other
+// gentle transitions. Injected once via a plain <style> tag so no build
+// config changes are needed.
+function GaidaStyleTag() {
+  return (
+    <style>{`
+      @keyframes gaida-breathe {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+      @keyframes gaida-blink {
+        0%, 92%, 100% { opacity: 1; }
+        96% { opacity: 0.35; }
+      }
+      .gaida-breathing {
+        animation: gaida-breathe 4.2s ease-in-out infinite;
+      }
+      .gaida-eyes {
+        animation: gaida-blink 5.5s ease-in-out infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .gaida-breathing, .gaida-eyes { animation: none !important; }
+      }
+    `}</style>
+  );
+}
+
 function TypingBubble({ color }) {
   return (
     <div className="flex gap-1 items-center h-4">
@@ -135,19 +173,47 @@ function TypingBubble({ color }) {
   );
 }
 
-function Avatar({ role, accent }) {
-  const isCounselor = role === 'counselor';
-  const bg = isCounselor ? '#0e2a45' : 'transparent';
-  const border = isCounselor ? '1px solid #1a4a6e' : `1px solid ${accent}`;
-  const color = isCounselor ? '#7eb8d9' : accent;
-  const label = isCounselor ? 'C' : 'G';
-
+// Soft, non-human agent mark: a rounded blob with two simple dot "eyes".
+// Used for the bot avatar everywhere in the chat. Counselor keeps a plain
+// initial mark since a person is on the other end.
+function GaidaMark({ size = 32, accent, breathing = false }) {
   return (
     <div
-      className="w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5"
-      style={{ background: bg, border }}
+      className={breathing ? 'gaida-breathing' : ''}
+      style={{ width: size, height: size, display: 'inline-flex' }}
     >
-      <span className="text-xs font-bold" style={{ color }}>{label}</span>
+      <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+        <path
+          d="M20 4c8.8 0 15 6.3 15 14.5S30.2 34 21.3 34c-2 0-3.5.7-5.2 1.9-1 .7-2.3-.1-2.1-1.3l.5-3.1C9.2 29 5 24.2 5 18.5 5 10.3 11.2 4 20 4z"
+          fill={accent}
+          opacity="0.16"
+        />
+        <path
+          d="M20 7c7.2 0 12.3 5.1 12.3 11.7 0 6.6-5.1 11.6-12.6 11.6-1.6 0-2.9.55-4.2 1.5-.8.55-1.9-.1-1.7-1.05l.4-2.5C9.6 26.4 6.3 22.5 6.3 18.7 6.3 12.1 12.8 7 20 7z"
+          fill={accent}
+        />
+        <circle className="gaida-eyes" cx="15.6" cy="18.5" r="1.8" fill="white" />
+        <circle className="gaida-eyes" cx="24.4" cy="18.5" r="1.8" fill="white" />
+        <path d="M16.5 23c1.8 1.4 5.2 1.4 7 0" stroke="white" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      </svg>
+    </div>
+  );
+}
+
+function Avatar({ role, accent, breathing = false }) {
+  if (role === 'counselor') {
+    return (
+      <div
+        className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5"
+        style={{ background: '#E7EEF5', border: '1px solid #C9DAE8' }}
+      >
+        <span className="text-xs sm:text-sm font-bold" style={{ color: '#4A7699' }}>C</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex-shrink-0 mb-0.5">
+      <GaidaMark size={30} accent={accent} breathing={breathing} />
     </div>
   );
 }
@@ -157,20 +223,20 @@ function MessageBubble({ message, theme, onFeedback, feedback }) {
 
   const bubbleStyle =
     role === 'user'
-      ? { background: theme.userBubble, color: theme.userText, borderRadius: '16px 16px 4px 16px' }
+      ? { background: theme.userBubble, color: theme.userText, borderRadius: '20px 20px 4px 20px' }
       : role === 'counselor'
-      ? { background: '#0e2a45', color: '#b5d4f4', border: '1px solid #1a4a6e', borderRadius: '4px 16px 16px 16px' }
-      : { background: theme.botBubble, color: theme.botText, border: `1px solid ${theme.border}`, borderRadius: '4px 16px 16px 16px' };
+      ? { background: '#F1F6FA', color: '#2E4A5E', border: '1px solid #DCE8F1', borderRadius: '4px 20px 20px 20px' }
+      : { background: theme.botBubble, color: theme.botText, border: `1px solid ${theme.border}`, borderRadius: '4px 20px 20px 20px' };
 
   return (
-    <div className={`flex flex-col gap-0.5 max-w-[78%] sm:max-w-[72%] lg:max-w-[65%] ${role === 'user' ? 'items-end' : 'items-start'}`}>
-      <div className="px-4 sm:px-5 py-3 sm:py-3.5 text-sm leading-relaxed" style={{ ...bubbleStyle, lineHeight: 1.6 }}>
+    <div className={`flex flex-col gap-1 max-w-[85%] sm:max-w-[72%] lg:max-w-[65%] ${role === 'user' ? 'items-end' : 'items-start'}`}>
+      <div className="px-4 py-3 sm:px-5 sm:py-3.5 text-[15px] sm:text-sm leading-relaxed shadow-sm" style={{ ...bubbleStyle, lineHeight: 1.65 }}>
         {isVoice && (
-          <div className="flex items-center gap-1 mb-1" style={{ opacity: 0.6 }}>
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center gap-1.5 mb-1.5" style={{ opacity: 0.65 }}>
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm-1 17.93V21H9v2h6v-2h-2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" />
             </svg>
-            <span className="text-xs">Voice</span>
+            <span className="text-xs font-medium">Voice</span>
           </div>
         )}
 
@@ -179,10 +245,10 @@ function MessageBubble({ message, theme, onFeedback, feedback }) {
         ) : (
           <ReactMarkdown
             components={{
-              p:      ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-              strong: ({ children }) => <strong className="font-bold" style={{ color: theme.userText }}>{children}</strong>,
-              ul:     ({ children }) => <ul className="list-disc list-inside mt-1 space-y-0.5">{children}</ul>,
-              li:     ({ children }) => <li className="text-sm">{children}</li>,
+              p:      ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+              ul:     ({ children }) => <ul className="list-disc list-inside mt-2 space-y-1">{children}</ul>,
+              li:     ({ children }) => <li className="text-[15px] sm:text-sm">{children}</li>,
               h1: () => null,
               h2: () => null,
               h3: () => null,
@@ -194,31 +260,43 @@ function MessageBubble({ message, theme, onFeedback, feedback }) {
       </div>
 
       {timestamp && (
-        <span className="text-xs px-1" style={{ color: theme.textMuted }}>
+        <span className="text-[11px] px-1" style={{ color: theme.textMuted }}>
           {formatMsgTime(timestamp)}
         </span>
       )}
 
       {role === 'bot' && acoustic && (
-        <div className="flex items-center gap-2 px-1">
-          <span className="text-xs" style={{ color: theme.textMuted }}>Voice detected:</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
-            acoustic.emotion === 'anxious'   ? 'text-yellow-400 border-yellow-800 bg-yellow-900/30' :
-            acoustic.emotion === 'sad'       ? 'text-blue-400 border-blue-800 bg-blue-900/30' :
-            acoustic.emotion === 'angry'     ? 'text-red-400 border-red-800 bg-red-900/30' :
-            acoustic.emotion === 'stressed'  ? 'text-orange-400 border-orange-800 bg-orange-900/30' :
-            acoustic.emotion === 'calm'      ? 'text-emerald-400 border-emerald-800 bg-emerald-900/30' :
-            acoustic.emotion === 'withdrawn' ? 'text-purple-400 border-purple-800 bg-purple-900/30' :
-                                               'text-gray-400 border-gray-700 bg-gray-800/30'
-          }`}>
+        <div className="flex flex-wrap items-center gap-2 px-1 mt-0.5">
+          <span className="text-[11px]" style={{ color: theme.textMuted }}>Voice detected:</span>
+          <span
+            className="text-[11px] px-2.5 py-1 rounded-full font-medium"
+            style={{
+              color:
+                acoustic.emotion === 'anxious'   ? '#9C7A34' :
+                acoustic.emotion === 'sad'       ? '#4A7699' :
+                acoustic.emotion === 'angry'     ? '#9C5A3C' :
+                acoustic.emotion === 'stressed'  ? '#B0793F' :
+                acoustic.emotion === 'calm'      ? '#4F7D58' :
+                acoustic.emotion === 'withdrawn' ? '#6A66A0' :
+                                                    theme.textSecondary,
+              background:
+                acoustic.emotion === 'anxious'   ? '#F6ECD6' :
+                acoustic.emotion === 'sad'       ? '#DCEAF3' :
+                acoustic.emotion === 'angry'     ? '#F5E4DA' :
+                acoustic.emotion === 'stressed'  ? '#F3E6D4' :
+                acoustic.emotion === 'calm'      ? '#E2F0E4' :
+                acoustic.emotion === 'withdrawn' ? '#E5E3F5' :
+                                                    theme.sidebar,
+            }}
+          >
             {acoustic.emotion}
           </span>
-          <span className="text-xs" style={{ color: theme.textMuted }}>{acoustic.severity}</span>
+          <span className="text-[11px]" style={{ color: theme.textMuted }}>{acoustic.severity}</span>
         </div>
       )}
 
       {role === 'bot' && onFeedback && (
-        <div className="flex items-center gap-1.5 px-1 pt-1">
+        <div className="flex items-center gap-2 px-1 pt-1">
           {[
             { k: 'up', label: 'Helpful' },
             { k: 'down', label: 'Not helpful' },
@@ -227,10 +305,10 @@ function MessageBubble({ message, theme, onFeedback, feedback }) {
               key={opt.k}
               onClick={() => onFeedback(opt.k)}
               disabled={!!feedback}
-              className="text-[11px] px-2 py-0.5 rounded-full border transition-colors disabled:opacity-45"
+              className="text-[12px] px-3 py-1.5 rounded-full border transition-colors duration-200 disabled:opacity-45 touch-manipulation"
               style={{
                 background: feedback === opt.k ? theme.accentDark : 'transparent',
-                color: feedback === opt.k ? theme.userText : theme.textSecondary,
+                color: feedback === opt.k ? '#FFFFFF' : theme.textSecondary,
                 border: `1px solid ${theme.border}`,
               }}
             >
@@ -273,12 +351,9 @@ export default function StudentDashboard() {
 
   // Per-message helpfulness feedback: message index -> 'up' | 'down'
   const [messageRatings, setMessageRatings] = useState({});
-  // Current session id — kept in state so child components (e.g. VoiceInput)
-  // always receive the latest value instead of a stale localStorage read.
-  const [sessionId, setSessionId] = useState(() => localStorage.getItem('session_id'));
 
   const [theme, setTheme] = useState(
-    () => THEMES[localStorage.getItem('gaida_theme')] || THEMES.purple
+    () => THEMES[localStorage.getItem('gaida_theme')] || THEMES.sky
   );
 
   // ── Refs ─────────────────────────────────────────────────────
@@ -303,7 +378,6 @@ export default function StudentDashboard() {
   // ── Auth + session reset on mount ────────────────────────────
   useEffect(() => {
     const token   = localStorage.getItem('session_token');
-    // Feature 3: check-in prompt for returning High/Crisis students
     const studentId = localStorage.getItem('student_id');
     if (studentId) {
       apiFetch(`${BACKEND}/api/counselor/student/checkin/${studentId}`)
@@ -331,27 +405,6 @@ export default function StudentDashboard() {
     return () => clearInterval(timerRef.current);
   }, [navigate]);
 
-  // Keep the sidebar in sync with the desktop/mobile breakpoint so rotating
-  // a tablet or resizing the window never leaves it stuck open or closed.
-  useEffect(() => {
-    let prevWidth = window.innerWidth;
-    const onResize = () => {
-      const w = window.innerWidth;
-      if (prevWidth < 1024 && w >= 1024) setSidebarOpen(true);
-      else if (prevWidth >= 1024 && w < 1024) setSidebarOpen(false);
-      prevWidth = w;
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  // ── End the session when the student leaves the page ─────────────
-  // pagehide fires on tab close, refresh, and navigating away (but NOT on SPA
-  // route changes or merely backgrounding the tab). The keepalive fetch lets
-  // the request finish during unload, so abandoned sessions stop counting as
-  // "active" immediately instead of lingering until the next backend restart.
-  // A student who refreshes and keeps chatting re-activates the session on
-  // their next message (see record_interaction in session_manager.py).
   useEffect(() => {
     const notifyLeave = () => {
       const sessionId = localStorage.getItem('session_id');
@@ -368,12 +421,10 @@ export default function StudentDashboard() {
     return () => window.removeEventListener('pagehide', notifyLeave);
   }, []);
 
-  // ── Auto-scroll ───────────────────────────────────────────────
   useEffect(() => {
     containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, voiceStatus, counselorTyping]);
 
-  // ── Counselor poll ────────────────────────────────────────────
   useEffect(() => {
     const poll = async () => {
       const sessionId = localStorage.getItem('session_id');
@@ -388,7 +439,6 @@ export default function StudentDashboard() {
         if (data.messages.some(m => m.sender === 'counselor')) setCounselorActive(true);
         setCounselorTyping(data.counselor_typing || false);
 
-        // ── Detect counselor returning control to GAIDA ───────
         const isCounselorActiveNow = data.counselor_active || false;
         if (wasCounselorActive.current && !isCounselorActiveNow) {
           setCounselorActive(false);
@@ -418,7 +468,6 @@ export default function StudentDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── PWA offline queue sync ────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (e.detail?.response?.response) {
@@ -432,7 +481,6 @@ export default function StudentDashboard() {
     return () => window.removeEventListener('gaida:queue-synced', handler);
   }, []);
 
-  // ── Handlers ─────────────────────────────────────────────────
   const fireTyping = useCallback((isTyping) => {
     const sessionId = localStorage.getItem('session_id');
     if (!sessionId) return;
@@ -443,19 +491,8 @@ export default function StudentDashboard() {
     }).catch((e) => { console.error('Typing indicator error:', e); });
   }, []);
 
-  // Auto-grow the composer (with a cap) so Shift+Enter multiline input is
-  // actually visible instead of being clipped inside a tiny fixed textarea.
-  const autoGrowTextarea = (el) => {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
-  };
-
   const handleInputChange = (e) => {
-    const value = e.target.value;
-    setInput(value);
-    autoGrowTextarea(e.target);
-
+    setInput(e.target.value);
     // Fire the "typing" indicator once per burst instead of on every
     // keystroke (avoids spamming the backend for each character).
     if (!typingActiveRef.current) {
@@ -470,7 +507,7 @@ export default function StudentDashboard() {
   };
 
   const sendMessage = async (textOverride) => {
-    const text = (textOverride ?? input).trim();
+    const text = (typeof textOverride === 'string' ? textOverride : input).trim();
     if (!text || sending) return;
 
     clearTimeout(typingTimeout.current);
@@ -479,7 +516,6 @@ export default function StudentDashboard() {
 
     setMessages(prev => [...prev, { role: 'user', text, timestamp: new Date() }]);
     setInput('');
-    if (inputRef.current) inputRef.current.style.height = 'auto';
     setSending(true);
     setStreamingStarted(false);
     if (window.innerWidth < 1024) setSidebarOpen(false);
@@ -498,7 +534,7 @@ export default function StudentDashboard() {
           message:    text,
           session_id: sessionId,
           user_id: localStorage.getItem('student_id'),
-          intent:     ventMode ? 'venting' : 'unknown',
+          intent:    ventMode ? 'venting' : 'unknown',
           vent_mode:  ventMode,
         }),
       });
@@ -510,7 +546,6 @@ export default function StudentDashboard() {
       }
 
       let botMsg = null;
-
       const reader  = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -542,10 +577,7 @@ export default function StudentDashboard() {
           });
         } else if (event.type === 'done') {
           const result = event.result || {};
-          if (result.session_id) {
-            localStorage.setItem('session_id', result.session_id);
-            setSessionId(result.session_id);
-          }
+          if (result.session_id)       localStorage.setItem('session_id', result.session_id);
           if (result.severity)         setSeverity(result.severity);
           if (result.counselor_active) setCounselorActive(true);
 
@@ -561,11 +593,10 @@ export default function StudentDashboard() {
         buffer += decoder.decode(value, { stream: true });
 
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep the incomplete last line for the next chunk
+        buffer = lines.pop();
         lines.forEach(processLine);
       }
 
-      // Body may end without a trailing newline (e.g. SW offline reply) — parse the tail.
       if (buffer.trim()) processLine(buffer);
     } catch (err) {
       setMessages(prev => [...prev, {
@@ -573,7 +604,10 @@ export default function StudentDashboard() {
       }]);
     } finally {
       setSending(false);
-      inputRef.current?.focus();
+      // Only auto-focus input on non-touch devices to avoid keyboard pop-ups
+      if (window.matchMedia("(pointer: fine)").matches) {
+        inputRef.current?.focus();
+      }
     }
   };
 
@@ -599,7 +633,6 @@ export default function StudentDashboard() {
         const data = await res.json();
         sessionId = data.session_id;
         localStorage.setItem('session_id', sessionId);
-        setSessionId(sessionId);
       } catch (e) {
         console.error('Start session error:', e);
         setMessages(prev => [...prev, {
@@ -632,7 +665,6 @@ export default function StudentDashboard() {
     }
   };
 
-  // ── Per-message helpfulness feedback ─────────────────────────
   const rateMessage = useCallback((index, value) => {
     if (messageRatings[index]) return;
     const m = messages[index];
@@ -650,7 +682,6 @@ export default function StudentDashboard() {
     }).catch(() => {});
   }, [messageRatings, messages]);
 
-  // ── Session end + wellbeing rating ───────────────────────────
   const endSession = () => {
     if (messages.length > 0) {
       setShowRating(true);
@@ -673,14 +704,6 @@ export default function StudentDashboard() {
     }
     const wasResearchSession = localStorage.getItem('is_research_session') === 'true';
 
-    // For a research session, session_id AND session_token are deliberately
-    // kept — the post-session SUS usability survey (ResearchSUS.jsx) needs
-    // session_id to know which session its answers belong to, and needs
-    // session_token so its apiFetch call to /api/research/sus can still
-    // authenticate (that endpoint requires a bearer token, same as
-    // /api/research/gad7). ResearchSUS.jsx clears both itself once the
-    // participant finishes or skips that page. A real (non-research)
-    // student session still clears everything immediately, as before.
     const keysToClear = wasResearchSession
       ? ['student_id', 'consent_given', 'is_research_session']
       : ['session_token', 'student_id', 'consent_given', 'session_id', 'is_research_session'];
@@ -690,12 +713,12 @@ export default function StudentDashboard() {
   };
 
   const handleWellbeingRating = async (value) => {
-    if (ratingSubmitted) return;
     setRatingSubmitted(true);
     const sessionId = localStorage.getItem('session_id');
-    if (sessionId && value > 0) {
+    if (sessionId) {
       try {
-        await apiFetch(`${BACKEND}/api/counselor/session/rate`, {  
+        await apiFetch(`${BACKEND}/api/counselor/session/rate`,
+          {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -708,7 +731,7 @@ export default function StudentDashboard() {
         console.error('Wellbeing rating error:', e);
       }
     }
-    setTimeout(() => confirmEndSession(), value > 0 ? 1800 : 500);
+    setTimeout(() => confirmEndSession(), 1800);
   };
 
   const switchTheme = (key) => {
@@ -716,26 +739,18 @@ export default function StudentDashboard() {
     localStorage.setItem('gaida_theme', key);
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────
   return (
     <div
-      className="h-screen min-h-screen max-h-screen flex overflow-hidden font-sans"
-      style={{
-        background: theme.bg,
-        // dvh-handling browsers get the modern unit; older ones fall back to
-        // the 100vh classes above (invalid inline values are dropped).
-        height: '100dvh',
-        minHeight: '100dvh',
-        maxHeight: '100dvh',
-      }}
+      className="min-h-dvh max-h-dvh flex overflow-hidden font-sans"
+      style={{ background: theme.bg, color: theme.textPrimary }}
     >
+      <GaidaStyleTag />
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 lg:hidden"
-          style={{ background: 'rgba(0,0,0,0.5)' }}
+          className="fixed inset-0 z-40 lg:hidden touch-none transition-opacity duration-300"
+          style={{ background: 'rgba(40,50,55,0.35)' }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -743,152 +758,139 @@ export default function StudentDashboard() {
       {/* ── Sidebar ──────────────────────────────────────────── */}
       <aside
         className={`
-          fixed lg:relative z-30 lg:z-auto top-0 left-0
+          fixed lg:relative z-50 lg:z-auto top-0 left-0
           transition-transform duration-300 ease-in-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          w-64 flex flex-col flex-shrink-0 h-full min-h-dvh overflow-hidden
+          w-[82vw] max-w-xs lg:w-72 flex flex-col flex-shrink-0 h-full min-h-dvh
         `}
         style={{ background: theme.sidebar, borderRight: `1px solid ${theme.border}` }}
       >
         {/* Logo */}
         <div className="p-5 flex items-center justify-between" style={{ borderBottom: `1px solid ${theme.border}` }}>
           <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: `linear-gradient(135deg, ${theme.accentDark}, ${theme.sidebar})` }}
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M9 2C5 2 2 6 2 9c0 4 3 7 7 7s7-3 7-7c0-3-3-7-7-7z" fill="none" stroke={theme.accent} strokeWidth="1.2" />
-                <path d="M9 5v8M6 8l3-3 3 3" stroke={theme.accent} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <GaidaMark size={38} accent={theme.accent} breathing />
             <div>
-              <p className="font-bold tracking-widest text-sm" style={{ color: theme.textPrimary }}>GAIDA</p>
+              <p className="font-bold tracking-wide text-sm" style={{ color: theme.textPrimary }}>GAIDA</p>
               <p className="text-xs" style={{ color: theme.textMuted }}>Guidance System</p>
             </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1"
+            className="lg:hidden p-2 -mr-2 touch-manipulation rounded-full transition-colors duration-200"
             style={{ color: theme.textMuted }}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Scrollable middle section — keeps the sidebar usable on short screens
-            (small laptops, mobile landscape, expanded settings) while End
-            Session stays pinned at the bottom. */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {/* Session stats */}
-        <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
-          <p className="text-xs uppercase tracking-widest mb-3" style={{ color: theme.textMuted }}>Session</p>
-          <div className="space-y-2">
+        {/* Session stats */}
+        <div className="p-5" style={{ borderBottom: `1px solid ${theme.border}` }}>
+          <p className="text-xs font-medium tracking-wide mb-3" style={{ color: theme.textMuted }}>Session</p>
+          <div
+            className="rounded-2xl p-4 space-y-2.5"
+            style={{ background: theme.card, border: `1px solid ${theme.border}` }}
+          >
             {[['Duration', formatTime(sessionTime)], ['Messages', messages.length]].map(([label, value]) => (
               <div key={label} className="flex justify-between items-center">
-                <span className="text-xs" style={{ color: theme.textSecondary }}>{label}</span>
-                <span className="text-xs font-bold" style={{ color: theme.textPrimary }}>{value}</span>
+                <span className="text-sm" style={{ color: theme.textSecondary }}>{label}</span>
+                <span className="text-sm font-semibold" style={{ color: theme.textPrimary }}>{value}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Anxiety Level */}
-        <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
-          <p className="text-xs uppercase tracking-widest mb-3" style={{ color: theme.textMuted }}>Anxiety Level</p>
+        <div className="p-5" style={{ borderBottom: `1px solid ${theme.border}` }}>
+          <p className="text-xs font-medium tracking-wide mb-3" style={{ color: theme.textMuted }}>How you're doing</p>
           <div
-            className={`p-3 rounded-lg border ${severityConfig.border}`}
-            style={{ background: theme.bg }}
+            className="p-4 rounded-2xl"
+            style={{ background: theme.card, border: `1px solid ${theme.border}` }}
           >
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs" style={{ color: theme.textSecondary }}>Detected</span>
-              <span className={`text-xs font-bold ${severityConfig.text}`}>{severity}</span>
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-sm" style={{ color: theme.textSecondary }}>Detected level</span>
+              <span
+                className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                style={{ color: severityConfig.text, background: severityConfig.chip }}
+              >
+                {severity}
+              </span>
             </div>
-            <div className="w-full rounded-full h-1.5" style={{ background: theme.border }}>
-              <div className={`${severityConfig.bar} ${severityConfig.width} h-1.5 rounded-full transition-all duration-700`} />
+            <div className="w-full rounded-full h-2" style={{ background: theme.border }}>
+              <div
+                className="h-2 rounded-full transition-all duration-700 ease-out"
+                style={{ background: severityConfig.fill, width: severityConfig.width }}
+              />
             </div>
           </div>
         </div>
 
         {/* Vent Mode Toggle */}
-        <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
-          <p className="text-xs uppercase tracking-widest mb-3" style={{ color: theme.textMuted }}>Mode</p>
-          <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+        <div className="p-5" style={{ borderBottom: `1px solid ${theme.border}` }}>
+          <p className="text-xs font-medium tracking-wide mb-3" style={{ color: theme.textMuted }}>Mode</p>
+          <div
+            className="flex rounded-full overflow-hidden p-1"
+            style={{ background: theme.card, border: `1px solid ${theme.border}` }}
+          >
             <button
               onClick={() => setVentMode(false)}
-              className="flex-1 py-1.5 text-xs font-bold transition-all duration-200"
+              className="flex-1 py-2.5 text-sm font-semibold rounded-full transition-all duration-200 touch-manipulation"
               style={{
-                background: !ventMode ? theme.accentDark : 'transparent',
-                color: !ventMode ? theme.userText : theme.textSecondary,
+                background: !ventMode ? theme.accent : 'transparent',
+                color: !ventMode ? '#FFFFFF' : theme.textSecondary,
               }}
             >
-              💬 Talk
+              Talk
             </button>
             <button
               onClick={() => setVentMode(true)}
-              className="flex-1 py-1.5 text-xs font-bold transition-all duration-200"
+              className="flex-1 py-2.5 text-sm font-semibold rounded-full transition-all duration-200 touch-manipulation"
               style={{
-                background: ventMode ? theme.accentDark : 'transparent',
-                color: ventMode ? theme.userText : theme.textSecondary,
+                background: ventMode ? theme.accent : 'transparent',
+                color: ventMode ? '#FFFFFF' : theme.textSecondary,
               }}
             >
-              🗣️ Vent
+              Vent
             </button>
           </div>
           {ventMode && (
-            <p className="text-xs mt-2" style={{ color: theme.textMuted }}>
-              GAIDA will just listen — no advice, no redirects.
+            <p className="text-xs mt-2.5 leading-relaxed" style={{ color: theme.textMuted }}>
+              GAIDA will just listen. No advice, no redirects.
             </p>
           )}
         </div>
 
         {/* Talk to a Counselor */}
-        <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
+        <div className="p-5" style={{ borderBottom: `1px solid ${theme.border}` }}>
           {counselorRequested || counselorActive ? (
             <div
-              className="w-full py-2 px-3 text-xs rounded-lg text-center font-medium"
-              style={{ background: theme.border, color: theme.textSecondary }}
+              className="w-full py-3 px-3 text-sm rounded-full text-center font-medium"
+              style={{ background: theme.card, border: `1px solid ${theme.border}`, color: theme.textSecondary }}
             >
-              {counselorActive ? '✓ Counselor is with you' : '⏳ Counselor notified'}
+              {counselorActive ? 'A counselor is with you' : 'Counselor notified'}
             </div>
           ) : (
             <button
               onClick={handleRequestCounselor}
               disabled={requestingCounselor}
-              className="w-full py-2 px-3 text-xs font-bold rounded-lg tracking-wide transition-all duration-200 disabled:opacity-50"
-              style={{ background: theme.accentDark, color: theme.userText, border: `1px solid ${theme.accent}` }}
+              className="w-full py-3 px-3 text-sm font-semibold rounded-full transition-all duration-200 disabled:opacity-50 shadow-sm touch-manipulation"
+              style={{ background: theme.accent, color: '#FFFFFF' }}
             >
-              {requestingCounselor ? 'Requesting...' : '🧑‍⚕️ Talk to a Counselor'}
+              {requestingCounselor ? 'Requesting…' : 'Talk to a counselor'}
             </button>
           )}
         </div>
 
-        {/* Crisis resources — always visible, not conditional on detected severity */}
-        <div className="p-4" style={{ borderBottom: `1px solid ${theme.border}` }}>
-          <p className="text-xs uppercase tracking-widest mb-2" style={{ color: theme.textMuted }}>
-            In Crisis?
-          </p>
-          <div
-            className="rounded-lg p-3 text-xs leading-relaxed"
-            style={{ background: theme.bg, border: `1px solid ${theme.border}`, color: theme.textSecondary }}
-          >
-            <p>National Crisis Hotline: <strong style={{ color: theme.textPrimary }}>1553</strong> (24/7)</p>
-            <p className="mt-1">In Touch Crisis Line: <strong style={{ color: theme.textPrimary }}>(02) 893-7603</strong></p>
-            <p className="mt-1">If in immediate danger, call <strong style={{ color: theme.textPrimary }}>911</strong>.</p>
-          </div>
-        </div>
-
         {/* Settings */}
-        <div className="p-4">
+        <div className="p-5 flex-1 overflow-y-auto min-h-0">
           <button
             onClick={() => setShowSettings(p => !p)}
-            className="flex items-center justify-between w-full"
+            className="flex items-center justify-between w-full py-1 touch-manipulation"
           >
-            <p className="text-xs uppercase tracking-widest" style={{ color: theme.textMuted }}>Settings</p>
+            <p className="text-xs font-medium tracking-wide" style={{ color: theme.textMuted }}>Settings</p>
             <svg
-              className={`w-3 h-3 transition-transform ${showSettings ? 'rotate-180' : ''}`}
+              className={`w-4 h-4 transition-transform duration-300 ${showSettings ? 'rotate-180' : ''}`}
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
               style={{ color: theme.textMuted }}
             >
@@ -897,22 +899,23 @@ export default function StudentDashboard() {
           </button>
 
           {showSettings && (
-            <div className="mt-3 space-y-4">
+            <div className="mt-4 space-y-5">
               {/* Theme Picker */}
               <div>
-                <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>Theme</p>
-                <div className="flex gap-2">
+                <p className="text-xs mb-3 font-medium" style={{ color: theme.textSecondary }}>Colors</p>
+                <div className="flex gap-3">
                   {Object.entries(THEMES).map(([key, t]) => (
                     <button
                       key={key}
                       onClick={() => switchTheme(key)}
-                      title={key}
+                      title={t.label}
+                      className="touch-manipulation transition-transform duration-200"
                       style={{
-                        width: '22px', height: '22px', borderRadius: '50%',
+                        width: '28px', height: '28px', borderRadius: '50%',
                         background: t.preview,
                         border: theme.name === key ? `2px solid ${theme.textPrimary}` : '2px solid transparent',
                         outline: theme.name === key ? `2px solid ${t.preview}` : 'none',
-                        outlineOffset: '2px', cursor: 'pointer', transition: 'all 0.2s',
+                        outlineOffset: '2px', cursor: 'pointer',
                       }}
                     />
                   ))}
@@ -921,8 +924,8 @@ export default function StudentDashboard() {
 
               {/* Quick Tips */}
               <div>
-                <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>Tips</p>
-                <div className="space-y-1.5 text-xs leading-relaxed" style={{ color: theme.textMuted }}>
+                <p className="text-xs mb-2 font-medium" style={{ color: theme.textSecondary }}>Tips</p>
+                <div className="space-y-2 text-xs leading-relaxed" style={{ color: theme.textMuted }}>
                   <p>Press Enter to send a message.</p>
                   <p>Use the mic button for voice input.</p>
                   <p>This conversation is kept confidential to help your counselor support you.</p>
@@ -931,28 +934,25 @@ export default function StudentDashboard() {
             </div>
           )}
         </div>
-        </div>
 
         {/* End Session */}
-        <div className="p-4" style={{ borderTop: `1px solid ${theme.border}` }}>
+        <div className="p-5" style={{ borderTop: `1px solid ${theme.border}`, paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}>
           <button
             onClick={endSession}
-            className="w-full py-2 px-4 text-xs font-bold rounded-lg tracking-widest uppercase transition-all duration-200"
-            style={{ background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textSecondary }}
-            onMouseEnter={e => { e.currentTarget.style.background = theme.border; e.currentTarget.style.color = theme.textPrimary; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = theme.textSecondary; }}
+            className="w-full py-3 px-4 text-sm font-semibold rounded-full transition-all duration-200 touch-manipulation"
+            style={{ background: '#FBEDEA', border: '1px solid #F0D2CA', color: '#B0472F' }}
           >
-            End Session
+            End session
           </button>
         </div>
       </aside>
 
       {/* ── Main ─────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 h-dvh">
+      <div className="flex-1 flex flex-col min-w-0 h-dvh relative">
 
         {/* Topbar */}
         <div
-          className="h-14 flex items-center px-4 gap-3 flex-shrink-0"
+          className="h-14 sm:h-16 flex items-center px-3 sm:px-6 gap-3 flex-shrink-0 z-10"
           style={{
             background: theme.sidebar,
             borderBottom: `1px solid ${theme.border}`,
@@ -960,34 +960,33 @@ export default function StudentDashboard() {
             height: 'calc(3.5rem + env(safe-area-inset-top))',
           }}
         >
+          {/* Hide hamburger on large screens since sidebar is permanently open */}
           <button
             onClick={() => setSidebarOpen(p => !p)}
-            className="flex-shrink-0 p-1 transition-colors"
+            className="flex-shrink-0 p-2 -ml-1 transition-colors duration-200 lg:hidden touch-manipulation rounded-full"
             style={{ color: theme.textSecondary }}
-            onMouseEnter={e => e.currentTarget.style.color = theme.textPrimary}
-            onMouseLeave={e => e.currentTarget.style.color = theme.textSecondary}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
 
-          <span className="text-xs sm:text-sm font-bold tracking-widest truncate min-w-0" style={{ color: theme.textPrimary }}>
-            VIRTUAL COUNSELOR
+          <span className="text-sm font-semibold tracking-wide truncate" style={{ color: theme.textPrimary }}>
+            Virtual Counselor
           </span>
 
           <div
-            className={`ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-bold ${severityConfig.text} ${severityConfig.border}`}
-            style={{ background: theme.bg }}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold"
+            style={{ background: severityConfig.chip, color: severityConfig.text }}
           >
-            <div className={`w-1.5 h-1.5 rounded-full ${severityConfig.bar}`} />
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: severityConfig.fill }} />
             <span className="hidden sm:inline">{severity}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: theme.accent }} />
-            <span className="text-xs hidden sm:inline" style={{ color: theme.accent }}>
-              {ventMode ? '🗣️ Vent Mode' : counselorActive ? '🧑‍⚕️ Counselor Active' : 'Online'}
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-1 sm:ml-2">
+            <div className="w-2 h-2 rounded-full" style={{ background: theme.accent }} />
+            <span className="text-xs hidden sm:inline font-medium" style={{ color: theme.textSecondary }}>
+              {ventMode ? 'Vent mode' : counselorActive ? 'Counselor active' : 'Online'}
             </span>
           </div>
         </div>
@@ -995,56 +994,29 @@ export default function StudentDashboard() {
         {/* Chat */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-3"
+          className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-4"
           style={{ background: theme.bg }}
         >
-          {/* Empty state */}
+          {/* Empty state & Mobile Quick Starts */}
           {messages.length === 0 && !voiceStatus && (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <div
-                className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
-                style={{ background: theme.sidebar, border: `1px solid ${theme.border}` }}
-              >
-                <svg className="w-7 h-7" fill="none" stroke={theme.textSecondary} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <p className="text-sm" style={{ color: theme.textPrimary }}>Start the conversation.</p>
-              <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>This conversation stays between you and the Guidance Office.</p>
+            <div className="flex flex-col items-center justify-center h-full text-center px-2 py-8">
+              <GaidaMark size={64} accent={theme.accent} breathing />
+              <p className="text-base font-semibold mt-5 mb-1" style={{ color: theme.textPrimary }}>Start the conversation.</p>
+              <p className="text-sm mb-8" style={{ color: theme.textSecondary }}>This space is private and confidential.</p>
 
-              {/* Quick-start prompts — one-tap conversation starters */}
-              <div className="flex flex-col gap-2 mt-6 w-full max-w-[280px]">
-                {QUICK_START_PROMPTS.map((p) => (
+              {/* Quick Start Buttons for Mobile Friendliness */}
+              <div className="w-full max-w-sm flex flex-col gap-3">
+                {QUICK_START_PROMPTS.map((prompt, idx) => (
                   <button
-                    key={p.text}
-                    onClick={() => sendMessage(p.text)}
-                    disabled={sending}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl transition-all duration-200 disabled:opacity-50"
-                    style={{
-                      background: theme.sidebar,
-                      border: `1px solid ${theme.border}`,
-                      color: theme.textSecondary,
+                    key={idx}
+                    onClick={() => {
+                      setInput(prompt.text);
+                      sendMessage(prompt.text);
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.border = `1px solid ${theme.accent}`;
-                      e.currentTarget.style.color = theme.textPrimary;
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.border = `1px solid ${theme.border}`;
-                      e.currentTarget.style.color = theme.textSecondary;
-                    }}
+                    className="w-full text-left px-5 py-4 rounded-2xl text-[15px] sm:text-sm font-medium shadow-sm transition-all duration-200 active:scale-[0.98] touch-manipulation"
+                    style={{ background: theme.card, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
                   >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {p.icon === 'school' ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 14l9-5-9-5-9 5 9 5zm0 0v6m-7 0h14" />
-                      ) : p.icon === 'message-2' ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                      )}
-                    </svg>
-                    {p.text}
+                    {prompt.text}
                   </button>
                 ))}
               </div>
@@ -1055,10 +1027,10 @@ export default function StudentDashboard() {
           {messages.map((m, i) => {
             if (m.role === 'system') {
               return (
-                <div key={i} className="flex justify-center">
+                <div key={i} className="flex justify-center my-2">
                   <span
-                    className="text-xs italic px-3 py-1 rounded-full"
-                    style={{ color: theme.textSecondary, background: theme.sidebar, border: `1px solid ${theme.border}` }}
+                    className="text-xs px-4 py-1.5 rounded-full shadow-sm"
+                    style={{ color: theme.textSecondary, background: theme.card, border: `1px solid ${theme.border}` }}
                   >
                     {m.text}
                   </span>
@@ -1066,7 +1038,7 @@ export default function StudentDashboard() {
               );
             }
             return (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} items-end gap-2`}>
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} items-end gap-2 sm:gap-3`}>
                 {(m.role === 'bot' || m.role === 'counselor') && (
                   <Avatar role={m.role} accent={theme.accent} />
                 )}
@@ -1082,24 +1054,24 @@ export default function StudentDashboard() {
 
           {/* Counselor typing */}
           {counselorTyping && (
-            <div className="flex justify-start items-end gap-2">
+            <div className="flex justify-start items-end gap-2 sm:gap-3">
               <Avatar role="counselor" accent={theme.accent} />
               <div
-                className="px-4 py-3"
-                style={{ background: '#0e2a45', border: '1px solid #1a4a6e', borderRadius: '4px 16px 16px 16px' }}
+                className="px-5 py-4 shadow-sm"
+                style={{ background: '#F1F6FA', border: '1px solid #DCE8F1', borderRadius: '4px 20px 20px 20px' }}
               >
-                <TypingBubble color="#7eb8d9" />
+                <TypingBubble color="#4A7699" />
               </div>
             </div>
           )}
 
           {/* Bot typing */}
           {sending && !counselorActive && !streamingStarted && (
-            <div className="flex justify-start items-end gap-2">
-              <Avatar role="bot" accent={theme.accent} />
+            <div className="flex justify-start items-end gap-2 sm:gap-3">
+              <Avatar role="bot" accent={theme.accent} breathing />
               <div
-                className="px-4 py-3"
-                style={{ background: theme.botBubble, border: `1px solid ${theme.border}`, borderRadius: '4px 16px 16px 16px' }}
+                className="px-5 py-4 shadow-sm"
+                style={{ background: theme.botBubble, border: `1px solid ${theme.border}`, borderRadius: '4px 20px 20px 20px' }}
               >
                 <TypingBubble color={theme.accent} />
               </div>
@@ -1108,12 +1080,12 @@ export default function StudentDashboard() {
 
           {/* Voice status */}
           {voiceStatus && (
-            <div className="flex justify-center">
+            <div className="flex justify-center my-2">
               <span
-                className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
-                style={{ color: theme.textSecondary, background: theme.sidebar, border: `1px solid ${theme.border}` }}
+                className="flex items-center gap-2.5 text-xs font-medium px-4 py-2 rounded-full shadow-sm"
+                style={{ color: theme.textSecondary, background: theme.card, border: `1px solid ${theme.border}` }}
               >
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: theme.accent }} />
+                <span className="w-2 h-2 rounded-full" style={{ background: theme.accent }} />
                 {voiceStatus}
               </span>
             </div>
@@ -1122,7 +1094,7 @@ export default function StudentDashboard() {
 
         {/* Input */}
         <div
-          className="px-3 sm:px-4 pt-3 flex-shrink-0"
+          className="px-3 sm:px-6 pt-3 sm:pt-4 flex-shrink-0"
           style={{
             background: theme.sidebar,
             borderTop: `1px solid ${theme.border}`,
@@ -1130,8 +1102,8 @@ export default function StudentDashboard() {
           }}
         >
           <div
-            className="flex items-end gap-2 rounded-2xl px-3 py-2"
-            style={{ background: theme.bg, border: `1px solid ${theme.border}` }}
+            className="flex items-end gap-2 sm:gap-3 rounded-2xl px-3 py-2 sm:p-2"
+            style={{ background: theme.card, border: `1px solid ${theme.border}` }}
           >
             <textarea
               ref={inputRef}
@@ -1140,41 +1112,40 @@ export default function StudentDashboard() {
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               rows={1}
-              className="flex-1 resize-none py-1 text-base sm:text-sm leading-relaxed focus:outline-none"
-              style={{ minHeight: '40px', maxHeight: '96px', background: 'transparent', color: theme.textPrimary }}
+              // IMPORTANT: Using text-base (16px) specifically on mobile prevents iOS Safari auto-zoom
+              className="flex-1 resize-none py-2 text-base sm:text-[15px] leading-relaxed focus:outline-none"
+              style={{ minHeight: '40px', maxHeight: '120px', background: 'transparent', color: theme.textPrimary }}
             />
-            <div className="flex items-center gap-1.5 flex-shrink-0 pb-0.5">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 pb-1">
               <VoiceInput
-                sessionId={sessionId}
+                sessionId={localStorage.getItem('session_id')}
                 onTranscript={(text) => { setInput(text); sendMessage(text); }}
                 onStatusChange={setVoiceStatus}
               />
               <button
                 onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 touch-manipulation"
                 style={
                   input.trim()
-                    ? { background: theme.userBubble, color: theme.userText }
-                    : { background: theme.sidebar, color: theme.border, cursor: 'not-allowed' }
+                    ? { background: theme.accent, color: '#FFFFFF' }
+                    : { background: theme.border, color: theme.textMuted, cursor: 'not-allowed' }
                 }
-                onMouseEnter={e => { if (input.trim()) e.currentTarget.style.background = theme.accent; }}
-                onMouseLeave={e => { if (input.trim()) e.currentTarget.style.background = theme.userBubble; }}
               >
                 {sending ? (
                   <div
-                    className="w-3.5 h-3.5 border-2 rounded-full animate-spin"
-                    style={{ borderColor: theme.textSecondary, borderTopColor: theme.accent }}
+                    className="w-4 h-4 border-2 rounded-full animate-spin"
+                    style={{ borderColor: 'rgba(255,255,255,0.4)', borderTopColor: '#FFFFFF' }}
                   />
                 ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
                 )}
               </button>
             </div>
           </div>
-          <p className="text-xs text-center mt-1.5 hidden sm:block" style={{ color: theme.textMuted }}>
+          <p className="text-[11px] text-center mt-2.5 hidden sm:block" style={{ color: theme.textMuted }}>
             Press Enter to send. Shift+Enter for new line.
           </p>
         </div>
@@ -1183,52 +1154,49 @@ export default function StudentDashboard() {
       {/* ── Post-Session Wellbeing Rating Modal ───────────────── */}
       {showRating && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.75)' }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 transition-opacity duration-300"
+          style={{ background: 'rgba(40,50,55,0.45)' }}
         >
           <div
-            className="w-[calc(100%-2rem)] max-w-sm mx-4 rounded-2xl p-6 flex flex-col items-center gap-5"
-            style={{ background: theme.sidebar, border: `1px solid ${theme.border}` }}
+            className="w-full max-w-sm rounded-3xl p-7 flex flex-col items-center gap-6 shadow-xl"
+            style={{ background: theme.card, border: `1px solid ${theme.border}` }}
           >
             {ratingSubmitted ? (
-              /* ── Thank you state ── */
-              <div className="flex flex-col items-center gap-3 py-2">
-                <div className="text-4xl">🙏</div>
-                <p className="text-sm font-bold text-center" style={{ color: theme.textPrimary }}>
+              <div className="flex flex-col items-center gap-3 py-4">
+                <GaidaMark size={48} accent={theme.accent} breathing />
+                <p className="text-base font-semibold text-center" style={{ color: theme.textPrimary }}>
                   Thank you for sharing.
                 </p>
-                <p className="text-xs text-center" style={{ color: theme.textSecondary }}>
+                <p className="text-sm text-center" style={{ color: theme.textSecondary }}>
                   Take care of yourself.
                 </p>
               </div>
             ) : (
-              /* ── Rating state ── */
               <>
-                <div className="text-center">
-                  <p className="text-sm font-bold mb-1" style={{ color: theme.textPrimary }}>
+                <div className="text-center w-full">
+                  <p className="text-base font-semibold mb-2" style={{ color: theme.textPrimary }}>
                     Before you go
                   </p>
-                  <p className="text-xs leading-relaxed" style={{ color: theme.textSecondary }}>
+                  <p className="text-sm leading-relaxed" style={{ color: theme.textSecondary }}>
                     How are you feeling right now compared to when we started?
                   </p>
                 </div>
 
-                <div className="flex gap-1.5 sm:gap-3 w-full justify-center">
+                <div className="flex gap-2 sm:gap-3 w-full justify-between">
                   {WELLBEING_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
                       onClick={() => handleWellbeingRating(opt.value)}
                       onMouseEnter={() => setHoveredRating(opt.value)}
                       onMouseLeave={() => setHoveredRating(null)}
-                      className="flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all duration-150 flex-1"
+                      className="flex flex-col items-center justify-start gap-2 p-3 sm:p-2 rounded-2xl transition-all duration-200 flex-1 touch-manipulation"
                       style={{
-                        background: hoveredRating === opt.value ? theme.border : 'transparent',
+                        background: hoveredRating === opt.value ? theme.sidebar : 'transparent',
                         border: `1px solid ${hoveredRating === opt.value ? theme.accent : theme.border}`,
-                        transform: hoveredRating === opt.value ? 'translateY(-2px)' : 'none',
                       }}
                     >
-                      <span className="text-lg sm:text-2xl">{opt.emoji}</span>
-                      <span className="text-[11px] sm:text-xs text-center leading-tight" style={{ color: theme.textSecondary }}>
+                      <span className="text-3xl mb-1">{opt.emoji}</span>
+                      <span className="text-[11px] text-center leading-tight font-medium" style={{ color: theme.textSecondary }}>
                         {opt.label}
                       </span>
                     </button>
@@ -1237,10 +1205,8 @@ export default function StudentDashboard() {
 
                 <button
                   onClick={() => handleWellbeingRating(0)}
-                  className="text-xs transition-colors"
+                  className="text-sm font-medium transition-colors duration-200 py-2 px-4 touch-manipulation"
                   style={{ color: theme.textMuted }}
-                  onMouseEnter={e => e.currentTarget.style.color = theme.textSecondary}
-                  onMouseLeave={e => e.currentTarget.style.color = theme.textMuted}
                 >
                   Skip
                 </button>
