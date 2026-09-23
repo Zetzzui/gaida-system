@@ -463,6 +463,7 @@ def process_alert(
                         "severity": severity,
                         "message": message,
                         "status": "pending",
+                        "deleted": False,
                     }
                 ).execute()
             except Exception as e:
@@ -663,6 +664,7 @@ def request_counselor(payload: CounselorRequest, user: dict = Depends(get_curren
                         "severity": "Requested",
                         "message": payload.message,
                         "status": "pending",
+                        "deleted": False,
                     }
                 ).execute()
             except Exception as e:
@@ -812,9 +814,9 @@ def resolve_session(payload: ResolveSession, user: dict = Depends(require_role("
         try:
             from app.database.database import supabase
 
-            supabase.table("counselor_alerts").update({"status": "resolved"}).eq(
-                "session_id", payload.session_id
-            ).execute()
+            supabase.table("counselor_alerts").update(
+                {"status": "resolved", "deleted": False}
+            ).eq("session_id", payload.session_id).execute()
 
             supabase.table("sessions").update(
                 {
@@ -839,11 +841,16 @@ def get_resolved_sessions(user: dict = Depends(require_role("counselor"))):
         from app.database.database import supabase
         from app.constants import TEST_CREDENTIALS
 
+        # Use is_("deleted", "false") instead of eq("deleted", False): older
+        # alert rows have deleted = NULL (the column had no DEFAULT when added),
+        # and Postgres NULL = false is not true, so eq() silently excluded every
+        # resolved alert that was never explicitly soft-deleted. IS NOT DISTINCT
+        # FROM false matches both explicit false and NULL.
         alerts = (
         supabase.table("counselor_alerts")
         .select("*")
         .eq("status", "resolved")
-        .eq("deleted", False)   # ← added
+        .is_("deleted", "false")
         .order("created_at", desc=True)
         .execute()
     )
@@ -1248,7 +1255,7 @@ def get_analytics_reports(user: dict = Depends(require_role("counselor"))):
         ]
         buckets = {m["key"]: m for m in months}
 
-        def _count_by_month(rows, col):
+        def _count_by_month(rows, col, dest):
             for row in rows:
                 ts = row.get(col)
                 if not ts:
@@ -1259,13 +1266,17 @@ def get_analytics_reports(user: dict = Depends(require_role("counselor"))):
                     continue
                 key = dt.strftime("%Y-%m")
                 if key in buckets:
-                    buckets[key][col] += 1
+                    # Don't use `col` as the bucket key — it's a DB column name
+                    # ("created_at") but the buckets use "sessions"/"alerts".
+                    # Using it directly raised KeyError("created_at") and made
+                    # the whole reports endpoint return {"error": ...}.
+                    buckets[key][dest] += 1
 
         _count_by_month(
-            supabase.table("sessions").select("created_at").execute().data, "created_at"
+            supabase.table("sessions").select("created_at").execute().data, "created_at", "sessions"
         )
         _count_by_month(
-            supabase.table("counselor_alerts").select("created_at").execute().data, "created_at"
+            supabase.table("counselor_alerts").select("created_at").execute().data, "created_at", "alerts"
         )
 
         # Monthly severity breakdown from interactions
