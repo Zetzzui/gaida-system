@@ -715,6 +715,7 @@ function SessionsPage({ sessions, onViewChat, lastUpdated }) {
 // ── Chat Modal ────────────────────────────────────────────────────────────────
 function ChatModal({ sessionId, onClose }) {
   const [messages, setMessages] = useState([]);
+  const messagesRef = useRef([]); // mirror used to dedupe realtime WS appends vs the 3s poll
   const [loading, setLoading] = useState(true);
   const [takeoverMsg, setTakeoverMsg] = useState('');
   const [sending, setSending] = useState(false);
@@ -778,6 +779,90 @@ function ChatModal({ sessionId, onClose }) {
     return () => clearInterval(interval);
   }, [sessionId]);
 
+  // Realtime live-chat updates: student messages, typing, and takeover state
+  // arrive over the per-session WebSocket (same feed the student uses), so a
+  // live conversation updates instantly instead of waiting for the 3s poll.
+  // The poll stays as the fallback for dropped/reconnecting sockets.
+  useEffect(() => {
+    const token = localStorage.getItem('counselor_token');
+    if (!token) return undefined;
+
+    let ws = null;
+    let closed = false;
+    let retryDelay = 1000;
+    let retryTimer = null;
+
+    const handleRealtime = (msg) => {
+      if (!msg || typeof msg !== 'object') return;
+      switch (msg.type) {
+        case 'interaction':
+          // Mirror the new message (student, bot reply, system, or this
+          // counselor's own echo — the dedupe in appendRealtimeMessage
+          // prevents overlaps with the poll).
+          appendRealtimeMessage(msg);
+          break;
+        case 'typing':
+          if (msg.sender === 'student') setStudentTyping(!!msg.is_typing);
+          break;
+        case 'counselor_active':
+          if (typeof msg.active === 'boolean') {
+            const myId = getCounselorId();
+            const mine = !msg.assigned_counselor_id || msg.assigned_counselor_id === myId;
+            setTookOver(msg.active && mine);
+          }
+          break;
+        default:
+          break;
+      }
+    };
+
+    const connect = () => {
+      const wsUrl = `${BACKEND.replace(/^http/, 'ws')}/api/session/ws/${sessionId}?token=${encodeURIComponent(token)}`;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch {
+        scheduleRetry();
+        return;
+      }
+
+      ws.onopen = () => { retryDelay = 1000; };
+
+      ws.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        handleRealtime(msg);
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        if (!closed) scheduleRetry();
+      };
+
+      ws.onerror = () => {
+        try { if (ws) ws.close(); } catch { /* onclose schedules the retry */ }
+      };
+    };
+
+    const scheduleRetry = () => {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        retryDelay = Math.min(retryDelay * 2, 15000);
+        connect();
+      }, retryDelay);
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      clearTimeout(retryTimer);
+      if (ws) {
+        try { ws.onclose = null; ws.close(); } catch { /* socket already gone */ }
+        ws = null;
+      }
+    };
+  }, [sessionId]);
+
   // Load existing note when modal opens
   useEffect(() => {
     apiFetch(`${BACKEND}/api/counselor/session-notes/${sessionId}`)
@@ -799,11 +884,32 @@ function ChatModal({ sessionId, onClose }) {
     }
   }, [messages, activeTab, studentTyping]);
 
+  // Append a message pushed over the realtime WebSocket, deduped against the
+  // transcript the poll returns (matched by sender + timestamp + text, all
+  // sourced from the same server-side entry, so keys are stable).
+  const appendRealtimeMessage = (msg) => {
+    if (!msg || !msg.text) return;
+    const key = `${msg.sender}|${msg.timestamp}|${msg.text}`;
+    if (messagesRef.current.some(m => `${m.sender}|${m.timestamp}|${m.text}` === key)) return;
+    const next = [...messagesRef.current, {
+      sender: msg.sender,
+      text: msg.text,
+      timestamp: msg.timestamp,
+      intent: msg.analysis?.intent,
+      confidence: msg.analysis?.confidence,
+    }];
+    messagesRef.current = next;
+    setMessages(next);
+  };
+
   const fetchChat = async () => {
     try {
       const res = await apiFetch(`${BACKEND}/api/counselor/chat/${sessionId}`);
       const data = await res.json();
-      if (data.messages) setMessages(data.messages);
+      if (data.messages) {
+        setMessages(data.messages);
+        messagesRef.current = data.messages;
+      }
       setStudentTyping(data.student_typing || false);
 
       // Keep the "you have joined" state truthful across modal re-opens:

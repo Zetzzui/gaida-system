@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPExce
 from pydantic import BaseModel
 from typing import Dict, Any
 from datetime import datetime
-from app.services.session_manager import start_session as svc_start, get_session, list_active_sessions, record_interaction, end_session
+import asyncio
+from app.services.session_manager import start_session as svc_start, get_session, list_active_sessions, record_interaction, end_session, set_main_loop
 from app.services.rule_intent import analyze_with_rules
 from app.utils.auth import get_current_user, validate_token, require_role
 
@@ -129,11 +130,25 @@ from app.services.session_manager import subscribe
 
 
 async def _broadcast_callback(session_id: str, entry: dict):
-    # send the entry to all websocket clients connected to this session
+    # Entries recorded via record_interaction() are raw interaction dicts —
+    # wrap them so every WebSocket payload carries a stable `type` discriminator
+    # the clients can switch on. Ad-hoc events (typing, counselor_active) already
+    # carry a `type` and pass through untouched.
+    if "type" not in entry:
+        entry = {"type": "interaction", **entry}
     await manager.broadcast(session_id, entry)
 
 
 subscribe(_broadcast_callback)
+
+
+def broadcast_to_session(session_id: str, payload: dict):
+    """Thread-safe, fire-and-forget push of an event to a session's WebSocket
+    clients. Safe from sync endpoints running in FastAPI worker threads."""
+    from app.services.session_manager import _schedule_coro
+
+    _schedule_coro(manager.broadcast(session_id, payload))
+
 
 @router.websocket("/ws/{session_id}")
 async def session_ws(websocket: WebSocket, session_id: str, token: str = Query("")):
@@ -143,6 +158,9 @@ async def session_ws(websocket: WebSocket, session_id: str, token: str = Query("
     if not validate_token(token):
         await websocket.close(code=4401)
         return
+    # WebSocket handlers run on the server's main event loop — capture it so
+    # sync endpoints running in worker threads can still schedule broadcasts.
+    set_main_loop(asyncio.get_running_loop())
     await manager.connect(session_id, websocket)
     try:
         while True:

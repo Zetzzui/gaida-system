@@ -989,6 +989,15 @@ def set_typing(session_id: str, payload: TypingPayload, user: dict = Depends(get
     if session_id not in TYPING_STATES:
         TYPING_STATES[session_id] = {"counselor": False, "student": False}
     TYPING_STATES[session_id][payload.sender] = payload.is_typing
+    # Push typing state to the session's WebSocket clients so the other party
+    # sees it instantly instead of waiting for the next 3s poll.
+    from app.services.session_manager import publish_event
+
+    publish_event(session_id, {
+        "type": "typing",
+        "sender": payload.sender,
+        "is_typing": payload.is_typing,
+    })
     return {"ok": True}
 
 
@@ -1002,7 +1011,7 @@ def counselor_takeover(payload: TakeOverMessage, user: dict = Depends(require_ro
     Sets counselor_active = True so the VA stops responding.
     """
     try:
-        from app.services.session_manager import get_session, record_interaction
+        from app.services.session_manager import get_session, record_interaction, publish_event
 
         session = get_session(payload.session_id)
         if not session:
@@ -1027,6 +1036,14 @@ def counselor_takeover(payload: TakeOverMessage, user: dict = Depends(require_ro
             analysis={"intent": "counselor_intervention"},
             response=None,
         )
+
+        # Push the takeover state to the student's WebSocket clients (the
+        # message itself is broadcast by record_interaction above).
+        publish_event(payload.session_id, {
+            "type": "counselor_active",
+            "active": True,
+            "assigned_counselor_id": payload.counselor_id,
+        })
 
         for alert in ALERTS:
             if alert["session_id"] == payload.session_id:
@@ -1053,7 +1070,7 @@ def counselor_takeover(payload: TakeOverMessage, user: dict = Depends(require_ro
 @router.post("/return-to-gaida")
 def return_to_gaida(payload: dict, user: dict = Depends(require_role("counselor"))):
     try:
-        from app.services.session_manager import get_session, record_interaction
+        from app.services.session_manager import get_session, record_interaction, publish_event
 
         session_id = payload.get("session_id")
         session = get_session(session_id)
@@ -1082,6 +1099,10 @@ def return_to_gaida(payload: dict, user: dict = Depends(require_role("counselor"
             analysis={},
             response=None,
         )
+
+        # Tell the student's WebSocket clients GAIDA is back (they show the
+        # "GAIDA has resumed" system bubble on this event).
+        publish_event(session_id, {"type": "counselor_active", "active": False})
 
         return {"ok": True, "session_id": session_id}
     except HTTPException:

@@ -855,7 +855,10 @@ The counselor login (frontend) uses its own hard-coded copy: `counselor01` / `co
 **Nice-to-have / future work**
 - No **RAG** (retrieval-augmented generation): GAIDA has no knowledge base lookup; it relies on
   prompt engineering + the last 6 messages as context.
-- No WebSocket usage on the frontend (polling every 2–3 s is used instead).
+- Student chat uses a per-session **WebSocket** (`/api/session/ws/{id}`) for realtime counselor
+  messages, typing indicators, and takeover state; a 3 s polling fallback still runs in case the
+  socket drops (reconnect gaps, offline tabs, service-worker cached responses). The counselor
+  dashboard still polls `/api/counselor/chat/{id}` every 3 s.
 - No database migrations in the repo — table schema is assumed.
 
 ---

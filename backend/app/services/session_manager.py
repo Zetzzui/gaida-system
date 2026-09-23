@@ -20,6 +20,39 @@ _WELFARE_DB_SCAN_MIN = timedelta(minutes=1)
 # serialized (avoids swallowing writes from concurrent messages).
 _PERSIST_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gaida-persist")
 
+# The server's main asyncio event loop, captured on the first WebSocket
+# connection (WebSocket handlers always run on the server loop). Sync FastAPI
+# endpoints execute in worker threads where there is no running loop, so
+# `asyncio.create_task(...)` there raises and would silently drop broadcasts —
+# the thread-safe scheduler below routes through this loop instead.
+_MAIN_LOOP = None
+
+
+def set_main_loop(loop):
+    """Remember the running server event loop (called by the session WS handler)."""
+    global _MAIN_LOOP
+    _MAIN_LOOP = loop
+
+
+def _schedule_coro(coro):
+    """Run an async callback on the live server loop from any context.
+
+    Prefers the calling thread's running loop (async endpoints); falls back to
+    the captured main loop via call_soon_threadsafe when called from a worker
+    thread. If no loop is available there are no WebSocket clients to deliver
+    to, so the coroutine is simply closed instead of leaking.
+    """
+    try:
+        asyncio.get_running_loop()
+        asyncio.create_task(coro)
+        return
+    except RuntimeError:
+        pass
+    loop = _MAIN_LOOP
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(lambda: asyncio.ensure_future(coro))
+    else:
+        coro.close()
 
 
 def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
@@ -190,12 +223,22 @@ def _notify_subscribers(session_id: str, entry: Dict[str, Any]):
     for cb in list(_SUBSCRIBERS):
         try:
             if asyncio.iscoroutinefunction(cb):
-                asyncio.create_task(cb(session_id, entry))
+                # Route through the scheduler: record_interaction() is called
+                # from both async endpoints (event-loop context) and sync
+                # endpoints running in FastAPI worker threads.
+                _schedule_coro(cb(session_id, entry))
             else:
                 cb(session_id, entry)
         except Exception:
             # swallow subscriber errors to avoid breaking main flow
             pass
+
+
+def publish_event(session_id: str, payload: Dict[str, Any]):
+    """Push an ad-hoc realtime event (typing, takeover, hand-back, ...) to a
+    session's subscribers — currently the per-session WebSocket manager in
+    app/api/session.py. Safe to call from sync or async endpoints."""
+    _notify_subscribers(session_id, payload)
 
 
 def _resolve_student_id(session_id: str) -> str | None:

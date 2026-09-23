@@ -343,6 +343,9 @@ export default function StudentDashboard() {
   const [requestingCounselor, setRequestingCounselor] = useState(false);
   const [counselorRequested,  setCounselorRequested]  = useState(false);
   const [streamingStarted,    setStreamingStarted]    = useState(false);
+  // Mirror of localStorage['session_id'] as React state so the realtime
+  // WebSocket (re)connects the moment a session is created/restored.
+  const [sessionId,          setSessionId]          = useState(() => localStorage.getItem('session_id'));
 
   // ── Rating state ─────────────────────────────────────────────
   const [showRating,        setShowRating]        = useState(false);
@@ -364,6 +367,42 @@ export default function StudentDashboard() {
   const typingTimeout      = useRef(null);
   const typingActiveRef    = useRef(false);
   const wasCounselorActive = useRef(false);
+
+  // ── Counselor-chat helpers ───────────────────────────────────
+  // Shared by BOTH the 3s poll and the realtime WebSocket so the two paths
+  // agree on state (no duplicate "joined"/"resumed" system bubbles) no matter
+  // which one delivers an update first.
+  const appendCounselorMessages = (counselorMsgs) => {
+    if (!counselorMsgs.length) return;
+    const firstUnseen = lastCounselorCount.current;
+    if (counselorMsgs.length <= firstUnseen) return;
+    setMessages(prev => [
+      ...prev,
+      ...(firstUnseen === 0 ? [{ role: 'system', text: 'A counselor has joined your session.' }] : []),
+      ...counselorMsgs.slice(firstUnseen).map(m => ({
+        role: 'counselor', text: m.text, timestamp: new Date(),
+      })),
+    ]);
+    lastCounselorCount.current = counselorMsgs.length;
+  };
+
+  const appendCounselorMessage = (msg) => {
+    const idx = lastCounselorCount.current;
+    setMessages(prev => [
+      ...prev,
+      ...(idx === 0 ? [{ role: 'system', text: 'A counselor has joined your session.' }] : []),
+      { role: 'counselor', text: msg.text, timestamp: new Date() },
+    ]);
+    lastCounselorCount.current = idx + 1;
+  };
+
+  const applyCounselorActive = (active) => {
+    if (wasCounselorActive.current && !active) {
+      setMessages(prev => [...prev, { role: 'system', text: 'GAIDA has resumed the conversation.' }]);
+    }
+    wasCounselorActive.current = active;
+    setCounselorActive(active);
+  };
 
   const severityConfig = SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.Normal;
 
@@ -427,38 +466,23 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     const poll = async () => {
-      const sessionId = localStorage.getItem('session_id');
-      if (!sessionId) return;
+      const sid = localStorage.getItem('session_id');
+      if (!sid) return;
 
       try {
-        const res  = await apiFetch(`${BACKEND}/api/counselor/chat/${sessionId}`);
+        const res  = await apiFetch(`${BACKEND}/api/counselor/chat/${sid}`);
         if (!res.ok) return;
         const data = await res.json();
         if (!data.messages) return;
 
-        if (data.messages.some(m => m.sender === 'counselor')) setCounselorActive(true);
         setCounselorTyping(data.counselor_typing || false);
 
-        const isCounselorActiveNow = data.counselor_active || false;
-        if (wasCounselorActive.current && !isCounselorActiveNow) {
-          setCounselorActive(false);
-          setMessages(prev => [...prev, { role: 'system', text: 'GAIDA has resumed the conversation.' }]);
-        }
-        wasCounselorActive.current = isCounselorActiveNow;
+        // Keep "counselor is with you" honest even if the server's meta flag
+        // lags behind: any counselor message implies a live takeover.
+        const anyCounselorMsg = data.messages.some(m => m.sender === 'counselor');
+        applyCounselorActive(!!(data.counselor_active || anyCounselorMsg));
 
-        const counselorMsgs = data.messages.filter(m => m.sender === 'counselor');
-        if (counselorMsgs.length > lastCounselorCount.current) {
-          if (lastCounselorCount.current === 0) {
-            setMessages(prev => [...prev, { role: 'system', text: 'A counselor has joined your session.' }]);
-          }
-          setMessages(prev => [
-            ...prev,
-            ...counselorMsgs.slice(lastCounselorCount.current).map(m => ({
-              role: 'counselor', text: m.text, timestamp: new Date(),
-            })),
-          ]);
-          lastCounselorCount.current = counselorMsgs.length;
-        }
+        appendCounselorMessages(data.messages.filter(m => m.sender === 'counselor'));
       } catch (e) {
         console.error('Poll chat error:', e);
       }
@@ -467,6 +491,88 @@ export default function StudentDashboard() {
     const interval = setInterval(poll, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, []);
+
+  // ── Realtime session updates ─────────────────────────────────
+  // The backend pushes new interactions / typing / takeover state over a
+  // per-session WebSocket (GET /api/session/ws/{id}?token=...). The 3s poll
+  // above stays as a fallback for missed events (reconnect gaps, offline
+  // tabs, service-worker cached responses).
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    const token = localStorage.getItem('session_token');
+    if (!token) return undefined;
+
+    let ws = null;
+    let closed = false;
+    let retryDelay = 1000;
+    let retryTimer = null;
+
+    const handleRealtimeMessage = (msg) => {
+      if (!msg || typeof msg !== 'object') return;
+      switch (msg.type) {
+        case 'interaction':
+          if (msg.sender === 'counselor') {
+            applyCounselorActive(true);
+            appendCounselorMessage(msg);
+          }
+          break;
+        case 'typing':
+          if (msg.sender === 'counselor') setCounselorTyping(!!msg.is_typing);
+          break;
+        case 'counselor_active':
+          applyCounselorActive(!!msg.active);
+          break;
+        default:
+          break;
+      }
+    };
+
+    const connect = () => {
+      const wsUrl = `${BACKEND.replace(/^http/, 'ws')}/api/session/ws/${sessionId}?token=${encodeURIComponent(token)}`;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch {
+        scheduleRetry();
+        return;
+      }
+
+      ws.onopen = () => { retryDelay = 1000; };
+
+      ws.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        handleRealtimeMessage(msg);
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        if (!closed) scheduleRetry();
+      };
+
+      ws.onerror = () => {
+        try { if (ws) ws.close(); } catch { /* onclose schedules the retry */ }
+      };
+    };
+
+    const scheduleRetry = () => {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        retryDelay = Math.min(retryDelay * 2, 15000);
+        connect();
+      }, retryDelay);
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      clearTimeout(retryTimer);
+      if (ws) {
+        try { ws.onclose = null; ws.close(); } catch { /* socket already gone */ }
+        ws = null;
+      }
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -577,7 +683,10 @@ export default function StudentDashboard() {
           });
         } else if (event.type === 'done') {
           const result = event.result || {};
-          if (result.session_id)       localStorage.setItem('session_id', result.session_id);
+          if (result.session_id) {
+            localStorage.setItem('session_id', result.session_id);
+            setSessionId(result.session_id);
+          }
           if (result.severity)         setSeverity(result.severity);
           if (result.counselor_active) setCounselorActive(true);
 
@@ -633,6 +742,7 @@ export default function StudentDashboard() {
         const data = await res.json();
         sessionId = data.session_id;
         localStorage.setItem('session_id', sessionId);
+        setSessionId(sessionId);
       } catch (e) {
         console.error('Start session error:', e);
         setMessages(prev => [...prev, {
@@ -708,6 +818,8 @@ export default function StudentDashboard() {
       ? ['student_id', 'consent_given', 'is_research_session']
       : ['session_token', 'student_id', 'consent_given', 'session_id', 'is_research_session'];
     keysToClear.forEach(k => localStorage.removeItem(k));
+
+    setSessionId(null); // closes the realtime WebSocket for this session
 
     navigate(wasResearchSession ? '/research-sus' : '/student-login');
   };
