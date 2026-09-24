@@ -18,7 +18,7 @@ export default function PortalSelection() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <img
-            src="https://www.ue.edu.ph/mla/wp-content/uploads/2023/04/uesocialogp.png"
+            src="https://www.ue.edu.ph/mla/wp-content/uploads/2020/12/UE_RED_SEAL_09.png"
             alt="University of the East"
             className="w-24 h-24 object-cover object-right rounded-full mb-4 shadow-lg border-4 border-red-700"
           />
