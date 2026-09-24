@@ -110,12 +110,26 @@ def resolve_crisis_level(matched_keywords, text: str) -> dict:
 
     Order of precedence (safety first):
       1. explicit-self-harm keyword → full crisis
-      2. soft give-up phrase + venting context → stress (false-positive guard)
-      3. fiction context → angry fiction (no alert; low risk)
-      4. hypothetical/hedged, or any give-up phrase with no vent → MODERATE alert
-      5. explicit keyword in hypothetical → HIGH (still real, but not plan)
+      2. third-person disclosure ("kill themselves") → HIGH unless fiction
+      3. soft give-up phrase + venting context → stress (false-positive guard)
+      4. fiction context → angry fiction (no alert; low risk)
+      5. hypothetical/hedged, or any give-up phrase with no vent → MODERATE alert
+      6. explicit keyword in hypothetical → HIGH (still real, but not plan)
     """
     text = text or ""
+
+    # Third-person suicide disclosure: "my friend said she wants to kill
+    # herself" / "my cousin killed himself". Not first-person intent, but a
+    # disclosure that still deserves a counselor alert — except when the
+    # context is clearly fiction/media ("the character kills herself in that
+    # movie"), which drops it to a low-key anger read instead.
+    if matched_keywords and any(k == "kill themselves" for k in matched_keywords):
+        if has_fiction_context(text):
+            return {"intent": "anger", "confidence": 0.55}
+        if has_hypothetical_context(text):
+            return {"intent": "suicidal", "confidence": 0.88}
+        return {"intent": "suicidal", "confidence": 0.85}
+
     if any(not is_soft_venting_phrase(k) for k in matched_keywords):
         if has_hypothetical_context(text):
             return {"intent": "suicidal", "confidence": 0.88}

@@ -1062,6 +1062,22 @@ def counselor_takeover(payload: TakeOverMessage, user: dict = Depends(require_ro
         except Exception as e:
             print(f"[counselor] takeover alert persist error: {e}")
 
+        # Persist the takeover state on the *sessions* row too. The WebSocket
+        # broadcast above only reaches live clients; only the DB survives a
+        # restart or a missed in-memory session, and load_session_from_db()
+        # rehydrates counselor_active from here (with a counselor_alerts
+        # fallback for legacy rows). Without this, a fresh session reload
+        # silently flips the conversation back to GAIDA/student on both
+        # dashboards even though a counselor is actively chatting.
+        try:
+            from app.database.database import supabase as _db
+
+            _db.table("sessions").update(
+                {"counselor_active": True, "assigned_counselor_id": payload.counselor_id}
+            ).eq("session_token", payload.session_id).execute()
+        except Exception as e:
+            print(f"[counselor] takeover session persist error: {e}")
+
         return {"ok": True, "message": payload.message}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -1103,6 +1119,17 @@ def return_to_gaida(payload: dict, user: dict = Depends(require_role("counselor"
         # Tell the student's WebSocket clients GAIDA is back (they show the
         # "GAIDA has resumed" system bubble on this event).
         publish_event(session_id, {"type": "counselor_active", "active": False})
+
+        # Clear the persisted takeover flags so a reload/restart rehydrates the
+        # session as GAIDA-held again (mirrors what load_session_from_db reads).
+        try:
+            from app.database.database import supabase as _db
+
+            _db.table("sessions").update(
+                {"counselor_active": False, "assigned_counselor_id": None}
+            ).eq("session_token", session_id).execute()
+        except Exception as e:
+            print(f"[counselor] return-to-gaida session persist error: {e}")
 
         return {"ok": True, "session_id": session_id}
     except HTTPException:

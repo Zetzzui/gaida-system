@@ -724,6 +724,8 @@ function ChatModal({ sessionId, onClose }) {
   const [studentTyping, setStudentTyping] = useState(false);
   const [returningToGaida, setReturningToGaida] = useState(false);
   const bottomRef = useRef(null);
+  const scrollRef = useRef(null);       // chat tab scroll container
+  const stickToBottomRef = useRef(true); // stays true unless counselor scrolls up
   const typingTimeoutRef = useRef(null);
   const [resolving, setResolving] = useState(false);
   const [resolved, setResolved] = useState(false);
@@ -878,11 +880,29 @@ function ChatModal({ sessionId, onClose }) {
       .catch(() => {});
   }, [sessionId]);
 
+  // Treat "near the bottom" (within ~80px) as pinned-to-newest. Scrolling up
+  // to read the transcript switches this off so new messages don't yank the
+  // view back down.
+  const handleChatScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  // (Re)opening the chat tab starts pinned at the newest message.
   useEffect(() => {
-    if (activeTab === 'chat') {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, activeTab, studentTyping]);
+    if (activeTab !== 'chat') return;
+    stickToBottomRef.current = true;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activeTab]);
+
+  // New messages / typing indicators only auto-scroll while the counselor is
+  // already at the bottom; while reading history the view is left alone.
+  useEffect(() => {
+    if (activeTab !== 'chat') return;
+    if (!stickToBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, studentTyping, activeTab]);
 
   // Append a message pushed over the realtime WebSocket, deduped against the
   // transcript the poll returns (matched by sender + timestamp + text, all
@@ -1178,7 +1198,7 @@ const typingThrottleRef = useRef(null);
 
         {/* Chat Tab */}
         {activeTab === 'chat' && (
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0" style={{ background: P.bg }}>
+          <div ref={scrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0" style={{ background: P.bg }}>
             {loading ? (
               <p className="text-xs text-center py-8" style={{ color: P.textMuted }}>Loading chat...</p>
             ) : messages.length === 0 ? (

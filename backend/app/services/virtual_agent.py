@@ -144,6 +144,49 @@ KEYWORDS = {
         ("i want to disappear forever", 3.5),
         ("better off dead", 3.5),
 
+        # Direct "kill myself" family — exact, spaced, inflected and modal
+        # variants. These are unambiguous self-referential statements that
+        # must always hit the hard crisis path, regardless of ML confidence.
+        ("kill my self", 4.0),
+        ("killing myself", 4.0),
+        ("killed myself", 4.0),
+        ("wanna kill myself", 4.0),
+        ("gonna kill myself", 4.0),
+        ("going to kill myself", 4.0),
+        ("planning to kill myself", 4.0),
+        ("thinking of killing myself", 4.0),
+        ("i will kill myself", 4.0),
+        ("im gonna kill myself", 4.0),
+        # "kms" slang (kill myself) — exact token match catches it anywhere.
+        ("kms", 4.0),
+        ("wanna kms", 4.0),
+        ("i will kms", 4.0),
+        ("gonna kms", 4.0),
+        # "off/end self" — direct but softer phrasing, still explicit.
+        ("off myself", 4.0),
+        ("off my self", 4.0),
+        ("end myself", 4.0),
+        ("end my self", 4.0),
+        ("end it for good", 4.0),
+        ("end my own life", 4.0),
+        ("take my life", 4.0),
+        ("hurt myself", 4.0),
+        ("harm myself", 4.0),
+        ("cut myself", 4.0),
+        ("want to hurt myself", 4.0),
+        ("want to harm myself", 4.0),
+        # Desperation / passive death-wish statements.
+        ("let me just die", 4.0),
+        ("let me die", 4.0),
+        ("just let me die", 4.0),
+        ("i should just die", 4.0),
+        ("i might as well die", 4.0),
+        ("wish i was dead", 3.5),
+        ("wish i were dead", 3.5),
+        ("feel like dying", 3.5),
+        ("feel like ending everything", 3.5),
+        ("dying inside", 3.5),
+
         # Direct Filipino
         ("gusto ko na mamatay", 3.5),
         ("ayoko na mabuhay", 3.5),
@@ -167,6 +210,14 @@ KEYWORDS = {
         ("nag iisip ng kamatayan", 3.5),
         ("nagiisip ng kamatayan", 3.5),
         ("iniisip ko ang kamatayan", 3.5),
+        ("wawakasan ko na ang buhay ko", 4.0),
+        ("tatapusin ko na ang lahat", 4.0),
+        ("tatapusin ko na ang buhay ko", 4.0),
+        ("gusto ko nang mawala", 3.8),
+        ("mawala na lang ako", 3.5),
+        ("sana mawala na ako", 3.5),
+        ("sana hindi na ako gumising", 3.8),
+        ("mas mabuti pang mawala na ako", 3.5),
 
         # Indirect Filipino
         ("bakit pa mabuhay", 4.0),
@@ -188,13 +239,36 @@ KEYWORDS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# EXPLICIT SELF-HARM SIGNALS
+# ---------------------------------------------------------------------------
+# Tokens/phrases that, when combined with an ML "suicidal" vote, justify
+# lifting the result to at least HIGH even if the model's raw confidence is a
+# hair under the threshold ("let me just die" -> 0.75 instead of 0.72). This
+# is the safety net that keeps clear self-harm language from being diluted to
+# Moderate by rounding/fuzzy matching when no hard keyword was matched.
+EXPLICIT_SELF_HARM_RE = re.compile(
+    r"\b(kill(ing|ed|er)?|kms|dying|die|suicid\w*|self[- ]harm\w*|"
+    r"off (my )?self|end(ing)? my|hurt myself|harm myself|cut myself|"
+    r"wakasan|wawakasan|mamatay|magpakamatay|kamatayan|papatayin|patayin|"
+    r"mawala|tatapusin|tapusin)\b",
+    re.IGNORECASE,
+)
+
+
 def _normalize_text(text: str) -> str:
     if not isinstance(text, str):
         return ""
     txt = text.lower()
     txt = re.sub(r"[\u2018\u2019\u201c\u201d]", "'", txt)
     txt = re.sub(r"[^\w\s']+", ' ', txt)
-    txt = re.sub(r'(.)\1{2,}', r'\1', txt)
+    # Merge look-alike word splits so "kill my self" / "end my self" match the
+    # same hard keywords as "kill myself" / "end myself" — a very common
+    # typo and speech-to-text artifact that used to slip through to the ML
+    # path (landing at Moderate instead of Crisis and never alerting).
+    txt = re.sub(r"\bmy self\b", "myself", txt)
+    txt = re.sub(r'\bgon na\b', 'gonna', txt)
+    txt = re.sub(r"(.)\1{2,}", r"\1", txt)
     txt = re.sub(r"\s+", ' ', txt).strip()
     return txt
 
@@ -286,6 +360,30 @@ def _match_suicidal_keyword(txt: str, tokens: set):
                     if found_soft is None:
                         found_soft = kw
                     break
+
+    # Robust fallback: explicit self-referential death talk caught from bare
+    # token pairs. Catches glued/misspelled variants the phrase matcher misses
+    # ("kill my self", "will end myself", "off my self") even after the
+    # "my self -> myself" normalization step. Only unambiguous self-referential
+    # verbs are used — "kill/end/off me" is deliberately excluded so idiomatic
+    # "this class is killing me" never hard-triggers a crisis.
+    for verb, objects in (("kill", ("myself", "self", "kms")),
+                          ("end", ("myself", "self")),
+                          ("off", ("myself", "self"))):
+        if verb in tokens and any(o in tokens for o in objects):
+            return "kill myself"
+
+    # Third-person disclosure: "my friend wants to kill herself" — a
+    # classmate/relative reporting suicidal intent matters, but is handled a
+    # level below a first-person statement (and fiction contexts are toned way
+    # down in resolve_crisis_level). The distinct tag lets that resolver apply
+    # the fiction guard instead of the blanket hard-crisis path.
+    kill_verbs = {"kill", "kills", "killed", "killing"}
+    if kill_verbs.intersection(tokens) and any(
+        o in tokens for o in ("herself", "himself", "themselves", "themself")
+    ):
+        return "kill themselves"
+
     return found_soft
 
 
@@ -330,6 +428,19 @@ def detect_intent_and_level(text: str) -> dict:
         neg_multiplier = _get_negative_context_multiplier(txt)
         ml_confidence = round(ml_confidence * neg_multiplier, 3)
         scaled_confidence = 0.3 + 0.7 * ml_confidence
+
+        # Safety net: when the ML model votes "suicidal" and the message
+        # contains explicit self-harm language, never let it sit at Moderate —
+        # lift it to at least HIGH so an alert fires. Only applied when no
+        # negative/joke/past-tense context diluted the signal, so "used to
+        # want to die" or "i'm dying lol" are not escalated.
+        if (
+            ml_intent == "suicidal"
+            and neg_multiplier >= 1.0
+            and EXPLICIT_SELF_HARM_RE.search(text)
+        ):
+            scaled_confidence = max(scaled_confidence, 0.85)
+
         scaled_confidence = round(min(0.98, scaled_confidence), 3)
 
         return _build_result(ml_intent, scaled_confidence)
@@ -386,7 +497,7 @@ def _build_result(intent: str, confidence: float, post_crisis: bool = False) -> 
         return {
             "intent": intent,
             "confidence": confidence,
-            "anxiety_level": "Crisis",
+            "anxiety_level": "crisis",
             "severity": "Crisis",
             "counselor_protocol": COUNSELOR_PROTOCOLS["crisis"],
             "crisis_resources": CRISIS_RESOURCES,

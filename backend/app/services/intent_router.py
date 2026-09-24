@@ -220,6 +220,15 @@ def _prepare_turn(user_message: str, session_id: str | None = None, user_id: str
 
             max_drop = previous_confidence * 0.50
             running_confidence = max(max_drop, running_confidence)
+
+            # Safety-first: a suicidal signal on THIS turn must never be diluted
+            # by history weighting — the running average may only reinforce it.
+            # Without this, a fresh session ("my friend wants to kill herself"
+            # → 0.85) gets crushed to ~0.47 by the neutral-history baseline and
+            # never fires an alert, and even a calm prior turn masks the signal.
+            if intent == "suicidal":
+                running_confidence = max(running_confidence, boosted_raw)
+
             running_confidence = round(running_confidence, 3)
 
         intent_priority = ["neutral", "academic", "loneliness", "anger", "stress", "sadness", "anxiety", "suicidal"]

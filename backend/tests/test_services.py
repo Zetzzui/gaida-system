@@ -91,7 +91,7 @@ def test_safe_phrase_does_not_mask_real_crisis():
     """A real suicidal phrase combined with a safe venting phrase must still
     trigger crisis, not be neutralised by the safe-phrase whitelist."""
     r = detect_intent_and_level("ayoko na mag aral, gusto ko na mamatay")
-    assert r["anxiety_level"] == "Crisis", f"got {r['anxiety_level']}"
+    assert r["anxiety_level"] == "crisis", f"got {r['anxiety_level']}"
 
 
 def test_school_venting_downgraded_to_stress():
@@ -104,7 +104,7 @@ def test_school_venting_downgraded_to_stress():
 def test_real_crisis_always_crisis():
     """Explicit self-harm language with no fiction/venting context."""
     r = detect_intent_and_level("i want to kill myself tonight")
-    assert r["anxiety_level"] == "Crisis"
+    assert r["anxiety_level"] == "crisis"
 
 
 def test_anger_capped_below_high():

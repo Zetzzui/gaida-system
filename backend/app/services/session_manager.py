@@ -87,10 +87,14 @@ def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
     resolved = False
     resolved_at = None
     resolved_by = None
+    # Counselor-takeover state also lives on the sessions row. `None` means the
+    # columns don't exist yet (legacy rows) → fall back to the alerts table.
+    counselor_active = None
+    assigned_counselor_id = None
     try:
         sess_rows = (
             supabase.table("sessions")
-            .select("ended_at, resolved, resolved_at, resolved_by")
+            .select("ended_at, resolved, resolved_at, resolved_by, counselor_active, assigned_counselor_id")
             .eq("session_token", session_id)
             .limit(1)
             .execute()
@@ -101,16 +105,52 @@ def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
             resolved = bool(row0.get("resolved"))
             resolved_at = row0.get("resolved_at")
             resolved_by = row0.get("resolved_by")
+            counselor_active = row0.get("counselor_active")
+            assigned_counselor_id = row0.get("assigned_counselor_id")
     except Exception as e:
         print(f"Session load error (sessions row): {e}")
 
+    # Legacy rows (created before the takeover columns existed) have no
+    # counselor_active value — restore it from counselor_alerts instead: a row
+    # marked status=escalated + counselor_took_over means a counselor took over
+    # and never handed the session back. Without this, a restart silently
+    # flips the conversation back to GAIDA/student on both dashboards.
+    if counselor_active is None:
+        try:
+            alert_rows = (
+                supabase.table("counselor_alerts")
+                .select("status, counselor_took_over")
+                .eq("session_id", session_id)
+                .eq("status", "escalated")
+                .limit(1)
+                .execute()
+            ).data or []
+            if alert_rows and bool(alert_rows[0].get("counselor_took_over")):
+                counselor_active = True
+        except Exception as e:
+            print(f"Session load error (counselor_alerts fallback): {e}")
+    counselor_active = bool(counselor_active)
+
     # Each row is one user turn + GAIDA's reply (stored in `response`).
+    # Counselor takeover messages and system notices are rows with no GAIDA
+    # reply; the alerts-transcript logic distinguishes them by intent:
+    # counselor_intervention = a counselor, intent None = a system notice,
+    # anything else = a user turn (with GAIDA's reply if present). Label the
+    # rehydrated messages the same way so both dashboards render and flag the
+    # conversation correctly after a restart.
     messages = []
     for row in data:
         ts = row.get("timestamp")
-        messages.append({"sender": "user", "text": row.get("message", ""), "timestamp": ts})
-        if row.get("response"):
-            messages.append({"sender": "bot", "text": row["response"], "timestamp": ts})
+        msg = row.get("message", "")
+        intent = row.get("intent")
+        if intent == "counselor_intervention":
+            messages.append({"sender": "counselor", "text": msg, "timestamp": ts})
+        elif intent is None and msg:
+            messages.append({"sender": "system", "text": msg, "timestamp": ts})
+        else:
+            messages.append({"sender": "user", "text": msg, "timestamp": ts})
+            if row.get("response"):
+                messages.append({"sender": "bot", "text": row["response"], "timestamp": ts})
 
     last = data[-1]
 
@@ -156,6 +196,10 @@ def load_session_from_db(session_id: str) -> Dict[str, Any] | None:
         "resolved": resolved,
         "resolved_at": resolved_at,
         "resolved_by": resolved_by,
+        # Restored counselor-held state so a rehydrated session stays on the
+        # counselor side (see takeover fallback above).
+        "counselor_active": counselor_active,
+        "assigned_counselor_id": assigned_counselor_id,
     }
 
     return {

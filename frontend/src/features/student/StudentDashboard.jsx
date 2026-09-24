@@ -873,12 +873,12 @@ export default function StudentDashboard() {
           fixed lg:relative z-50 lg:z-auto top-0 left-0
           transition-transform duration-300 ease-in-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          w-[82vw] max-w-xs lg:w-72 flex flex-col flex-shrink-0 h-full min-h-dvh
+          w-[82vw] max-w-xs lg:w-72 flex flex-col flex-shrink-0 h-dvh lg:h-full
         `}
         style={{ background: theme.sidebar, borderRight: `1px solid ${theme.border}` }}
       >
         {/* Logo */}
-        <div className="p-5 flex items-center justify-between" style={{ borderBottom: `1px solid ${theme.border}` }}>
+        <div className="p-5 flex items-center justify-between flex-shrink-0" style={{ borderBottom: `1px solid ${theme.border}` }}>
           <div className="flex items-center gap-3">
             <GaidaMark size={38} accent={theme.accent} breathing />
             <div>
@@ -897,6 +897,9 @@ export default function StudentDashboard() {
           </button>
         </div>
 
+        {/* Scrollable middle area: on short/mobile viewports this region scrolls
+            so the End Session button below stays pinned to the bottom. */}
+        <div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
         {/* Session stats */}
         <div className="p-5" style={{ borderBottom: `1px solid ${theme.border}` }}>
           <p className="text-xs font-medium tracking-wide mb-3" style={{ color: theme.textMuted }}>Session</p>
@@ -995,7 +998,7 @@ export default function StudentDashboard() {
         </div>
 
         {/* Settings */}
-        <div className="p-5 flex-1 overflow-y-auto min-h-0">
+        <div className="p-5">
           <button
             onClick={() => setShowSettings(p => !p)}
             className="flex items-center justify-between w-full py-1 touch-manipulation"
@@ -1046,9 +1049,10 @@ export default function StudentDashboard() {
             </div>
           )}
         </div>
+        </div>
 
         {/* End Session */}
-        <div className="p-5" style={{ borderTop: `1px solid ${theme.border}`, paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}>
+        <div className="p-5 flex-shrink-0" style={{ borderTop: `1px solid ${theme.border}`, paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}>
           <button
             onClick={endSession}
             className="w-full py-3 px-4 text-sm font-semibold rounded-full transition-all duration-200 touch-manipulation"
