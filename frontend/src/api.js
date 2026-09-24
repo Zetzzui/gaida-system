@@ -16,11 +16,35 @@ export function getAuthToken() {
   return localStorage.getItem('session_token') || localStorage.getItem('counselor_token') || null
 }
 
-function clearAuth() {
+// Purge sensitive data the service worker persisted locally (chat-history
+// cache + offline message queue). Called on logout / session end / 401 so
+// nothing sensitive outlives the session on disk.
+export async function clearSensitiveLocalData() {
+  try {
+    if ('caches' in window && typeof caches.keys === 'function') {
+      const keys = await caches.keys()
+      await Promise.all(keys.filter((k) => k.includes('-data')).map((k) => caches.delete(k)))
+    }
+  } catch { /* non-secure context or unsupported cache API — ignore */ }
+  try {
+    if ('indexedDB' in window) {
+      await new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase('gaida-offline-queue')
+        req.onsuccess = req.onerror = req.onblocked = () => resolve()
+      })
+    }
+  } catch { /* ignore */ }
+  try {
+    navigator.serviceWorker?.controller?.postMessage({ type: 'LOGOUT' })
+  } catch { /* ignore */ }
+}
+
+export function clearAuth() {
   localStorage.removeItem('session_token')
   localStorage.removeItem('counselor_token')
   localStorage.removeItem('counselorData')
   localStorage.removeItem('student_id')
+  clearSensitiveLocalData()
 }
 
 export async function apiFetch(input, options = {}, tokenOverride = null) {

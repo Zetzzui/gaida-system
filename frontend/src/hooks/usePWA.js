@@ -42,8 +42,17 @@ export function usePWA({ onQueuedMessageSent } = {}) {
               .catch((err) => console.warn("[GAIDA PWA] Sync registration failed:", err));
           }
           // Fallback for browsers without Background Sync (iOS Safari):
-          // ask the service worker to flush the queue right away.
-          navigator.serviceWorker.controller?.postMessage({ type: "FLUSH_QUEUE" });
+          // ask the service worker to flush the queue right away — and
+          // hand it the CURRENT auth token so the replay uses a fresh
+          // credential (the SW never persists it).
+          const token =
+            localStorage.getItem("session_token") ||
+            localStorage.getItem("counselor_token") ||
+            undefined;
+          navigator.serviceWorker.controller?.postMessage({
+            type: "FLUSH_QUEUE",
+            token,
+          });
         });
       })
       .catch((err) => {

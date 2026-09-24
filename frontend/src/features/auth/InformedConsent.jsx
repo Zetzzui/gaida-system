@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { clearAuth } from '../../api';
 
 export default function InformedConsent() {
   const navigate = useNavigate();
@@ -35,7 +36,9 @@ const handleAccept = async (e) => {
 };
 
   const handleDecline = () => {
-    // TODO: Log out user
+    // No consent = no session: fully log the user out (clears auth state,
+    // the SW data cache, and any queued offline messages).
+    clearAuth();
     navigate('/');
   };
 
