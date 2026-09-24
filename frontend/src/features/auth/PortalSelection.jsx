@@ -13,7 +13,7 @@ export default function PortalSelection() {
       />
 
       {/* White card */}
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-10 w-full max-w-md mx-4">
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-6 sm:p-10 w-full max-w-md mx-4">
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">

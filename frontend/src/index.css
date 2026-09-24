@@ -18,3 +18,13 @@
     width: var(--progress);
   }
 }
+
+/* Hides the visible scrollbar while keeping the area scrollable
+   (wheel/trackpad/touch still work). Apply via the no-scrollbar class. */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE / legacy Edge */
+  scrollbar-width: none;    /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, new Edge */
+}

@@ -1614,6 +1614,7 @@ export default function CounselorDashboard() {
   const [welfare, setWelfare] = useState([]);
   const [chatSessionId, setChatSessionId] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const prevPendingIdsRef = useRef(new Set());
   const alertsRef = useRef(alerts);
   alertsRef.current = alerts;
@@ -1785,7 +1786,8 @@ export default function CounselorDashboard() {
 
   return (
     <div className="min-h-screen flex overflow-hidden" style={{ background: P.bg }}>
-      {expanded && <div className="fixed inset-0 z-20" style={{ background: 'rgba(34,48,58,0.25)' }} onClick={() => setExpanded(false)} />}
+      {expanded && <div className="fixed inset-0 z-20 hidden lg:block" style={{ background: 'rgba(34,48,58,0.25)' }} onClick={() => setExpanded(false)} />}
+      {mobileNavOpen && <div className="fixed inset-0 z-20 lg:hidden" style={{ background: 'rgba(34,48,58,0.45)' }} onClick={() => setMobileNavOpen(false)} />}
 
       {/* Sidebar */}
       <style>{`
@@ -1794,7 +1796,12 @@ export default function CounselorDashboard() {
         .cdash-side-btn:hover { background: rgba(255,255,255,0.06); color: #E3EAEE; }
       `}</style>
       <aside
-        className={`fixed top-0 left-0 h-full z-30 flex flex-col shadow-lg transition-all duration-300 ${expanded ? 'w-56' : 'w-16'}`}
+        className={`
+          fixed top-0 left-0 h-full z-30 flex-col shadow-lg transition-all duration-300
+          ${mobileNavOpen ? 'flex translate-x-0' : 'hidden -translate-x-full'}
+          lg:flex lg:translate-x-0
+          w-56 ${expanded ? 'lg:w-56' : 'lg:w-16'}
+        `}
         style={{ background: P.navy }}
       >
         <div className="h-14 flex items-center justify-center flex-shrink-0" style={{ borderBottom: `1px solid ${P.navyLight}` }}>
@@ -1805,7 +1812,7 @@ export default function CounselorDashboard() {
           >
             <span className="text-white text-xs font-bold">{initials}</span>
           </div>
-          {expanded && <span className="text-white font-semibold text-sm tracking-wide ml-3 whitespace-nowrap">GAIDA</span>}
+          {(expanded || mobileNavOpen) && <span className="text-white font-semibold text-sm tracking-wide ml-3 whitespace-nowrap">GAIDA</span>}
         </div>
         <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden space-y-0.5 px-2">
           {NAV.map((navItem) => {
@@ -1816,8 +1823,8 @@ export default function CounselorDashboard() {
             return (
               <button
                 key={navItem.id}
-                onClick={() => { setActivePage(navItem.id); setExpanded(false); }}
-                title={!expanded ? navItem.label : undefined}
+                onClick={() => { setActivePage(navItem.id); setExpanded(false); setMobileNavOpen(false); }}
+                title={!expanded && !mobileNavOpen ? navItem.label : undefined}
                 className={`cdash-nav-btn w-full flex items-center px-3 py-2.5 rounded-lg transition-colors duration-200 relative group ${active ? 'cdash-active' : ''}`}
                 style={active ? { background: 'rgba(255,255,255,0.08)', color: '#FFFFFF', borderLeftColor: P.accent } : { color: '#8FA3AC' }}
               >
@@ -1832,8 +1839,8 @@ export default function CounselorDashboard() {
                     </span>
                   )}
                 </span>
-                {expanded && <span className="ml-3 text-sm font-medium whitespace-nowrap">{navItem.label}</span>}
-                {!expanded && (
+                {(expanded || mobileNavOpen) && <span className="ml-3 text-sm font-medium whitespace-nowrap">{navItem.label}</span>}
+                {!expanded && !mobileNavOpen && (
                   <span
                     className="absolute left-16 text-white text-xs px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-lg"
                     style={{ background: P.navyLight }}
@@ -1848,7 +1855,7 @@ export default function CounselorDashboard() {
         <div className="flex-shrink-0 px-2 py-2 space-y-0.5" style={{ borderTop: `1px solid ${P.navyLight}` }}>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="cdash-side-btn w-full flex items-center px-3 py-2.5 rounded-lg transition-colors duration-200"
+            className="cdash-side-btn hidden lg:flex w-full items-center px-3 py-2.5 rounded-lg transition-colors duration-200"
             style={{ color: '#8FA3AC' }}
           >
             <span
@@ -1865,7 +1872,7 @@ export default function CounselorDashboard() {
             onClick={logout}
             className="cdash-side-btn w-full flex items-center px-3 py-2.5 rounded-lg transition-colors duration-200"
             style={{ color: '#8FA3AC' }}
-            title={!expanded ? 'Logout' : undefined}
+            title={!expanded && !mobileNavOpen ? 'Logout' : undefined}
           >
             <span className="flex-shrink-0 flex items-center justify-center" style={{ width: 20, height: 20 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1873,13 +1880,27 @@ export default function CounselorDashboard() {
                 <line x1="12" y1="2" x2="12" y2="12" />
               </svg>
             </span>
-            {expanded && <span className="ml-3 text-sm font-medium">Logout</span>}
+            {(expanded || mobileNavOpen) && <span className="ml-3 text-sm font-medium">Logout</span>}
           </button>
         </div>
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden ml-16">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-16">
+        {/* Mobile top bar */}
+        <div className="flex lg:hidden items-center gap-3 px-3 h-14 flex-shrink-0 z-10" style={{ background: P.navy, color: '#FFF' }}>
+          <button
+            onClick={() => { setExpanded(false); setMobileNavOpen(true); }}
+            className="p-2 -ml-1 rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+            aria-label="Open menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <span className="text-white font-semibold text-sm tracking-wide">GAIDA</span>
+          <span className="text-white/60 text-xs flex-1 text-right pr-1">Counselor Dashboard</span>
+        </div>
         <main className="flex-1 overflow-y-auto">
           <div className="w-full max-w-6xl mx-auto p-4 sm:p-6">
             {activePage === 'overview'  && <OverviewPage alerts={alerts} sessions={sessions} />}
