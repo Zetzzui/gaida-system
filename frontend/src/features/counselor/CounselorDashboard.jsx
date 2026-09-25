@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 
 import { BACKEND_URL as BACKEND } from '../../config';
-import apiFetch from '../../api';
+import apiFetch, { clearSensitiveLocalData } from '../../api';
 
 // ── Shared palette ─────────────────────────────────────────────────────────
 // Same cool-blue / soft-green identity as the student interface. Bright red
@@ -1776,6 +1776,7 @@ export default function CounselorDashboard() {
   const logout = () => {
     localStorage.removeItem('counselor_token');
     localStorage.removeItem('counselorData');
+    clearSensitiveLocalData(); // purge any cached data / queued messages
     navigate('/counselor-login');
   };
 

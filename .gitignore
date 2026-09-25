@@ -51,3 +51,7 @@ interactions.json
 
 # PWA dev build output
 frontend/dev-dist/
+
+# Never commit (user's personal work)
+postman/
+frontend/src/components/GoogleSignIn.jsx

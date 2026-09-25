@@ -8,10 +8,14 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-const CACHE_VERSION = "gaida-v3";
+const CACHE_VERSION = "gaida-v4";
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
-const DATA_CACHE    = `${CACHE_VERSION}-data`;
 const QUEUE_STORE   = "gaida-offline-queue";
+
+// In-memory only: fresh auth token used to replay queued messages after a
+// reconnect. The page supplies it at flush time. It is deliberately never
+// written to disk (IndexedDB / Cache Storage).
+let replayAuthToken = null;
 
 
 // Required by vite-plugin-pwa injectManifest strategy
@@ -30,15 +34,14 @@ const APP_SHELL_FILES = [
   "/icons/icon-512x512.png",
 ];
 
-// ── API routes to cache responses from ───────────────────────
-const API_CACHE_ROUTES = [
-  "/api/session/",
-  "/api/counselor/chat/",
-  "/api/counselor/alerts",
-  "/api/counselor/student-profile/",
-];
-
 // ── API routes that should be queued when offline ────────────
+//
+// SECURITY NOTE: API GET responses (chat history, session/wellness data,
+// alerts, student profiles) are intentionally NOT cached anymore. They
+// contain sensitive personal data and the old Cache Storage was keyed only
+// by URL — not by user — so on a shared browser profile one user's data
+// could be served to the next, and conversations were persisted on disk.
+// Offline chat viewing was removed in favor of privacy.
 const QUEUEABLE_ROUTES = [
   "/virtual-agent",
   "/api/counselor/request-counselor",
@@ -77,7 +80,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key.startsWith("gaida-") && key !== SHELL_CACHE && key !== DATA_CACHE)
+          .filter((key) => key.startsWith("gaida-") && key !== SHELL_CACHE)
           .map((key) => {
             console.log("[GAIDA SW] Removing old cache:", key);
             return caches.delete(key);
@@ -96,35 +99,29 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Engage the SW for:
+  // Engage the SW only for:
   //   • same-origin requests (app shell, JS/CSS assets, navigation)
-  //   • GAIDA backend API calls, matched by PATHNAME so it works no
-  //     matter where the backend is hosted (localhost, Render, etc.)
-  // Everything else (foreign origins like Google scripts, fonts, Supabase)
-  // passes through untouched — never cache-first'd.
+  //   • queueable GAIDA backend calls (matched by pathname so it works no
+  //     matter where the backend is hosted)
+  // Everything else — backend API GET/PUT/DELETE, foreign origins (Google
+  // scripts, Supabase) — passes through untouched. API responses are never
+  // cached: they contain sensitive personal data.
   const isSameOrigin = url.origin === self.location.origin;
-  const isApiRoute   = API_CACHE_ROUTES.some((route) => url.pathname.includes(route));
   const isQueueable  = QUEUEABLE_ROUTES.some((route) => url.pathname.includes(route));
-  if (!isSameOrigin && !isApiRoute && !isQueueable) return;
+  if (!isSameOrigin && !isQueueable) return;
 
-  // Skip non-GET requests that aren't queueable API calls
+  // Queueable POSTs: send immediately when online, queue when offline.
   if (request.method === "POST") {
     if (isQueueable) {
       event.respondWith(handleQueueablePost(request));
-      return;
     }
     return;
   }
 
+  // Non-GET (PUT/PATCH/DELETE/OPTIONS/HEAD...) pass through untouched.
   if (request.method !== "GET") return;
 
-  // API data routes — network first, cache fallback
-  if (isApiRoute) {
-    event.respondWith(networkFirstWithCache(request));
-    return;
-  }
-
-  // App shell routes — cache first, network fallback
+  // Same-origin GET → app shell / static asset — cache first, network fallback.
   event.respondWith(cacheFirstWithNetwork(request));
 });
 
@@ -156,30 +153,7 @@ async function cacheFirstWithNetwork(request) {
 
 
 // ═════════════════════════════════════════════════════════════
-// STRATEGY: Network First (API Data / Chat History)
-// Always try network. On failure, serve cached version.
-// ═════════════════════════════════════════════════════════════
-async function networkFirstWithCache(request) {
-  try {
-    const response = await fetch(request);
-    if (response && response.status === 200) {
-      const cache = await caches.open(DATA_CACHE);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    return new Response(
-      JSON.stringify({ error: "offline", message: "You are offline. Showing cached data." }),
-      { status: 503, headers: { "Content-Type": "application/json" } }
-    );
-  }
-}
-
-
-// ═════════════════════════════════════════════════════════════
-// STRATEGY: Queue POST (Offline Message Queue)
+// QUEUE POST (Offline Message Queue)
 // If online → send immediately.
 // If offline → save to IndexedDB queue, return optimistic response.
 // ═════════════════════════════════════════════════════════════
@@ -192,10 +166,12 @@ async function handleQueueablePost(request) {
     // Offline — queue the message
     try {
       const body = await request.clone().json();
+      const headers = Object.fromEntries(request.headers.entries());
+      delete headers.authorization; // security: never persist credentials on disk
       await addToQueue({
         url: request.url,
         method: request.method,
-        headers: Object.fromEntries(request.headers.entries()),
+        headers,
         body,
         timestamp: Date.now(),
         id: crypto.randomUUID(),
@@ -250,7 +226,16 @@ self.addEventListener("sync", (event) => {
 self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "FLUSH_QUEUE" && typeof event.waitUntil === "function") {
+    // The page passes the CURRENT auth token so the replay uses a fresh
+    // credential instead of anything persisted at enqueue time.
+    if (typeof data.token === "string" && data.token) replayAuthToken = data.token;
     event.waitUntil(flushMessageQueue());
+  }
+  // Logout: drop the in-memory token and purge unsent queued messages —
+  // they belong to the session that just ended.
+  if (data.type === "LOGOUT") {
+    replayAuthToken = null;
+    removeAllFromQueue().catch(() => {});
   }
 });
 
@@ -262,9 +247,11 @@ async function flushMessageQueue() {
 
   for (const item of queue) {
     try {
+      const headers = { ...item.headers, "Content-Type": "application/json" };
+      if (replayAuthToken) headers.Authorization = `Bearer ${replayAuthToken}`;
       const response = await fetch(item.url, {
         method: item.method,
-        headers: { ...item.headers, "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(item.body),
       });
 
@@ -370,5 +357,15 @@ async function removeFromQueue(id) {
     tx.objectStore("messages").delete(id);
     tx.oncomplete = resolve;
     tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function removeAllFromQueue() {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    tx.objectStore("messages").clear();
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = (e) => { db.close(); reject(e.target.error); };
   });
 }

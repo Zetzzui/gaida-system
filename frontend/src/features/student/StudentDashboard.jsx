@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 // ─────────────────────────────────────────────────────────────
 
 import { BACKEND_URL as BACKEND } from '../../config';
-import apiFetch from '../../api';
+import apiFetch, { clearSensitiveLocalData } from '../../api';
 const POLL_INTERVAL = 3000;
 const TYPING_DEBOUNCE = 2000;
 
@@ -818,6 +818,7 @@ export default function StudentDashboard() {
       ? ['student_id', 'consent_given', 'is_research_session']
       : ['session_token', 'student_id', 'consent_given', 'session_id', 'is_research_session'];
     keysToClear.forEach(k => localStorage.removeItem(k));
+    clearSensitiveLocalData(); // purge cached chat data & offline queue
 
     setSessionId(null); // closes the realtime WebSocket for this session
 
