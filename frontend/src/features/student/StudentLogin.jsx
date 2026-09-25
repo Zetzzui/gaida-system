@@ -19,9 +19,11 @@ export default function StudentLogin() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  // Generate captcha immediately when the page loads
+  // Generate captcha immediately when the page loads. Mount-only on purpose:
+  // re-running on every re-render would reset the captcha mid-typing.
   useEffect(() => {
     handleRefreshCaptcha();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRefreshCaptcha is recreated each render; we want a single mount-time refresh
   }, []);
 
   const handleChange = (e) => {

@@ -9,6 +9,7 @@ import StudentDashboard from './features/student/StudentDashboard'
 import CounselorDashboard from './features/counselor/CounselorDashboard'
 import ForgotPassword from './features/auth/ForgotPassword'
 import PWABanner from './components/PWABanner'
+import ErrorBoundary from './components/ErrorBoundary'
 import ResearchFlow from './features/research/ResearchFlow'
 import ResearchSUS from './features/research/ResearchSUS'
 import Withdraw from './features/research/Withdraw'
@@ -34,21 +35,23 @@ function App() {
   return (
     <BrowserRouter>
 
-      {/* PWA Banner — fixed top, visible on all routes */}
-      <PWABanner onQueuedMessageSent={handleQueuedMessageSent} />
+      <ErrorBoundary>
+        {/* PWA Banner — fixed top, visible on all routes */}
+        <PWABanner onQueuedMessageSent={handleQueuedMessageSent} />
 
-      <Routes>
-        <Route path="/"                    element={<PortalSelection />} />
-        <Route path="/student-login"       element={<StudentLogin />} />
-        <Route path="/counselor-login"     element={<CounselorLogin />} />
-        <Route path="/forgot-password"     element={<ForgotPassword />} />
-        <Route path="/consent"             element={<InformedConsent />} />
-        <Route path="/student-dashboard"   element={<StudentDashboard />} />
-        <Route path="/counselor-dashboard" element={<CounselorDashboard />} />
-        <Route path="/research"            element={<ResearchFlow />} />
-        <Route path="/research-sus"        element={<ResearchSUS />} />
-        <Route path="/research/withdraw"   element={<Withdraw />} />
-      </Routes>
+        <Routes>
+          <Route path="/"                    element={<PortalSelection />} />
+          <Route path="/student-login"       element={<StudentLogin />} />
+          <Route path="/counselor-login"     element={<CounselorLogin />} />
+          <Route path="/forgot-password"     element={<ForgotPassword />} />
+          <Route path="/consent"             element={<InformedConsent />} />
+          <Route path="/student-dashboard"   element={<StudentDashboard />} />
+          <Route path="/counselor-dashboard" element={<CounselorDashboard />} />
+          <Route path="/research"            element={<ResearchFlow />} />
+          <Route path="/research-sus"        element={<ResearchSUS />} />
+          <Route path="/research/withdraw"   element={<Withdraw />} />
+        </Routes>
+      </ErrorBoundary>
 
     </BrowserRouter>
   )

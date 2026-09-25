@@ -110,13 +110,6 @@ const QUICK_START_PROMPTS = [
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-const mapConfidenceToSeverity = (conf) => {
-  if (conf >= 0.75) return 'High';
-  if (conf >= 0.60) return 'Moderate';
-  if (conf >= 0.45) return 'Low';
-  return 'Normal';
-};
-
 const formatTime = (seconds) => {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
@@ -454,7 +447,7 @@ export default function StudentDashboard() {
           headers: { 'Content-Type': 'application/json' },
           keepalive: true,
         }).catch(() => {});
-      } catch (e) {}
+      } catch { /* pagehide flush failed — nothing to recover */ }
     };
     window.addEventListener('pagehide', notifyLeave);
     return () => window.removeEventListener('pagehide', notifyLeave);

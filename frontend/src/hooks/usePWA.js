@@ -17,7 +17,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 export function usePWA({ onQueuedMessageSent } = {}) {
   const [isOnline, setIsOnline]           = useState(navigator.onLine);
   const [isInstallable, setIsInstallable] = useState(false);
-  const [isInstalled, setIsInstalled]     = useState(false);
+  // Read the initial standalone-mode check lazily instead of setting state
+  // inside the install effect — avoids a synchronous setState-in-effect
+  // render cascade, and the first-paint value is identical.
+  const [isInstalled, setIsInstalled]     = useState(
+    () => window.matchMedia("(display-mode: standalone)").matches
+  );
   const [swReady, setSwReady]             = useState(false);
   const [queuedMessages, setQueuedMessages] = useState([]);
 
@@ -121,11 +126,6 @@ export function usePWA({ onQueuedMessageSent } = {}) {
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
-
-    // Check if already installed (standalone mode)
-    if (window.matchMedia("(display-mode: standalone)").matches) {
-      setIsInstalled(true);
-    }
 
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);

@@ -24,13 +24,15 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
 
   const pushStatus = (text) => onStatusChange?.(text);
 
+  // Revoke the generated object URL whenever it changes (and on unmount).
+  // audioURL is a dep so the cleanup sees the *current* URL — with `[]` the
+  // closure would capture the initial null and never revoke anything.
   useEffect(() => {
     return () => {
       stopAll();
-      // Clean up audio URL on unmount
       if (audioURL) URL.revokeObjectURL(audioURL);
     };
-  }, []);
+  }, [audioURL]);
 
   const stopAll = () => {
     try { recognitionRef.current?.stop(); } catch (e) { void e; }
@@ -176,7 +178,7 @@ export default function VoiceInput({ onTranscript, sessionId, onStatusChange }) 
       };
 
       recognition.onerror = () => {};
-      try { recognition.start(); } catch { }
+      try { recognition.start(); } catch { /* already started or recognition unavailable */ }
     }
 
     setRecording(true);

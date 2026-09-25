@@ -1,3 +1,5 @@
+import typography from '@tailwindcss/typography'
+
 export default {
   content: [
     "./index.html",
@@ -6,5 +8,5 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [require('@tailwindcss/typography')],
+  plugins: [typography],
 }

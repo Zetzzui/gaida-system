@@ -109,7 +109,7 @@ const playAlertSound = () => {
       osc.start(ctx.currentTime + delay / 1000);
       osc.stop(ctx.currentTime + delay / 1000 + 0.3);
     });
-  } catch (e) {}
+  } catch { /* audio output unavailable — the alert beep is best-effort */ }
 };
 
 // Which counselor is signed in (matches what /takeover uses).
@@ -141,8 +141,8 @@ const downloadSessionPdf = async (sessionId) => {
     a.remove();
     window.URL.revokeObjectURL(url);
     return true;
-  } catch (e) {
-    alert(e.message || 'Could not export PDF.');
+  } catch (err) {
+    alert(err.message || 'Could not export PDF.');
     return false;
   }
 };
@@ -554,7 +554,7 @@ function AlertRow({ a, onViewChat, onUpdateStatus, onAcknowledge }) {
 
 function AlertsPage({ alerts, onViewChat, onUpdateStatus, onAcknowledge }) {
   // Tick every 30 seconds so escalation badges update without a poll.
-  const [, setNow] = useState(Date.now());
+  const [, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(interval);
@@ -779,6 +779,10 @@ function ChatModal({ sessionId, onClose }) {
     fetchChat();
     const interval = setInterval(fetchChat, 3000);
     return () => clearInterval(interval);
+    // fetchChat is intentionally omitted: it's recreated each render, and
+    // adding it would reset the 3s poll on every render. The interval keeps
+    // the first closure, which is fine — it only touches refs + stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   // Realtime live-chat updates: student messages, typing, and takeover state
@@ -939,7 +943,7 @@ function ChatModal({ sessionId, onClose }) {
         const mine = !data.assigned_counselor_id || data.assigned_counselor_id === myId;
         setTookOver(data.counselor_active && mine);
       }
-    } catch (e) {} finally {
+    } catch { /* ignore */ } finally {
       setLoading(false);
     }
   };
@@ -998,7 +1002,7 @@ const typingThrottleRef = useRef(null);
       } else {
         setActionError(data.error || 'Could not send your message. Please try again.');
       }
-    } catch (e) {
+    } catch {
       setActionError('Connection error sending your message. Please try again.');
     } finally {
       setSending(false);
@@ -1023,7 +1027,7 @@ const typingThrottleRef = useRef(null);
       } else {
         setActionError(data.error || data.detail || 'Could not hand the session back to GAIDA.');
       }
-    } catch (e) {
+    } catch {
       setActionError('Connection error returning the session. Please try again.');
     } finally {
       setReturningToGaida(false);
@@ -1051,7 +1055,7 @@ const typingThrottleRef = useRef(null);
       } else {
         setNoteError(data.error || 'Failed to save. Please try again.');
       }
-    } catch (e) {
+    } catch {
       setNoteError('Failed to save. Please try again.');
     } finally {
       setSavingNote(false);
@@ -1095,7 +1099,7 @@ const typingThrottleRef = useRef(null);
       } else if (!res.ok) {
         alert(data.detail || 'Could not resolve this session — it may need to be acknowledged first (Alerts tab).');
       }
-    } catch (e) {} finally {
+    } catch { /* ignore */ } finally {
       setResolving(false);
     }
   };
@@ -1617,48 +1621,12 @@ export default function CounselorDashboard() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const prevPendingIdsRef = useRef(new Set());
   const alertsRef = useRef(alerts);
-  alertsRef.current = alerts;
+  // Mirror latest alerts for the 5-minute reminder check (must happen in an
+  // effect — updating a ref during render violates the rules of React).
+  useEffect(() => {
+    alertsRef.current = alerts;
+  }, [alerts]);
   const [lastUpdated, setLastUpdated] = useState(null);
-
-  useEffect(() => {
-    fetchAlerts();
-    fetchSessions();
-    fetchWelfare();
-    const interval = setInterval(() => {
-      fetchAlerts();
-      fetchSessions();
-      fetchWelfare();
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Realtime push via SSE: the backend broadcasts named events when alerts,
-  // active sessions, or welfare checks change, so an open dashboard updates —
-  // and beeps/notifies on new alerts — without a reload, even in a background
-  // tab (browsers throttle setInterval there but not live network streams).
-  // The 2s poll above stays as a fallback for when SSE is unavailable.
-  useEffect(() => {
-    const token = localStorage.getItem('counselor_token');
-    if (!token) return;
-    let es = null;
-    try {
-      es = new EventSource(`${BACKEND}/api/counselor/events?token=${encodeURIComponent(token)}`);
-      es.addEventListener('alerts', fetchAlerts);
-      es.addEventListener('sessions', fetchSessions);
-      es.addEventListener('welfare', fetchWelfare);
-      // EventSource auto-reconnects on drop; re-sync on every (re)connect.
-      es.onopen = () => {
-        fetchAlerts();
-        fetchSessions();
-        fetchWelfare();
-      };
-    } catch {
-      es = null;
-    }
-    return () => {
-      if (es) es.close();
-    };
-  }, []);
 
   useEffect(() => {
     if (Notification.permission === 'default') {
@@ -1689,7 +1657,7 @@ export default function CounselorDashboard() {
         prevPendingIdsRef.current = new Set(pendingNowIds);
         setAlerts(data.alerts);
       }
-    } catch (e) {}
+    } catch { /* ignore */ }
   };
 
   // Every 5 minutes, re-remind with a sound while any pending alert is still
@@ -1714,7 +1682,7 @@ export default function CounselorDashboard() {
       const data = await res.json();
       if (data.sessions) setSessions(data.sessions);
       setLastUpdated(new Date());
-    } catch (e) {}
+    } catch { /* ignore */ }
   };
 
   const handleUpdateStatus = async (sessionId, status) => {
@@ -1733,7 +1701,7 @@ export default function CounselorDashboard() {
         return;
       }
       fetchAlerts();
-    } catch (e) {}
+    } catch { /* ignore */ }
   };
 
   const handleAcknowledge = async (sessionId) => {
@@ -1749,7 +1717,7 @@ export default function CounselorDashboard() {
         return;
       }
       fetchAlerts();
-    } catch (e) {}
+    } catch { /* ignore */ }
   };
 
   const fetchWelfare = async () => {
@@ -1757,8 +1725,61 @@ export default function CounselorDashboard() {
       const res = await apiFetch(`${BACKEND}/api/counselor/sessions/welfare`);
       const data = await res.json();
       if (data.sessions) setWelfare(data.sessions);
-    } catch (e) {}
+    } catch { /* ignore */ }
   };
+
+  // Realtime push via SSE: the backend broadcasts named events when alerts,
+  // active sessions, or welfare checks change, so an open dashboard updates —
+  // and beeps/notifies on new alerts — without a reload, even in a background
+  // tab (browsers throttle setInterval there but not live network streams).
+  // Declared after the fetch* consts so the listeners can reference them
+  // (react-hooks/immutability). The 2s poll below is the fallback.
+  useEffect(() => {
+    const token = localStorage.getItem('counselor_token');
+    if (!token) return;
+    let es = null;
+    try {
+      es = new EventSource(`${BACKEND}/api/counselor/events?token=${encodeURIComponent(token)}`);
+      es.addEventListener('alerts', fetchAlerts);
+      es.addEventListener('sessions', fetchSessions);
+      es.addEventListener('welfare', fetchWelfare);
+      // EventSource auto-reconnects on drop; re-sync on every (re)connect.
+      es.onopen = () => {
+        fetchAlerts();
+        fetchSessions();
+        fetchWelfare();
+      };
+    } catch {
+      es = null;
+    }
+    return () => {
+      if (es) es.close();
+    };
+  }, []);
+
+  // Poll for alert/session/welfare changes every 2 seconds as a fallback to
+  // the SSE push. Placed after the fetch* consts so the effect body never
+  // references them before they're initialized (react-hooks/immutability);
+  // effects still run in order after mount.
+  useEffect(() => {
+    // Initial load + 2s cadence. The first fetch is deferred a tick so the
+    // setState inside the fetch* functions doesn't run synchronously in the
+    // effect body (react-hooks/set-state-in-effect).
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      fetchAlerts();
+      fetchSessions();
+      fetchWelfare();
+    };
+    const initial = setTimeout(tick, 0);
+    const interval = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleMarkWelfareChecked = async (sessionId) => {
     try {
@@ -1768,7 +1789,7 @@ export default function CounselorDashboard() {
         body: JSON.stringify({ session_id: sessionId }),
       });
       setWelfare(prev => prev.filter(w => w.session_id !== sessionId));
-    } catch (e) {}
+    } catch { /* ignore */ }
   };
 
   const pendingCount = alerts.filter(a => a.status === 'pending').length;
